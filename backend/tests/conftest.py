@@ -11,20 +11,33 @@ from app.main import app
 
 
 @pytest.fixture()
-def client(monkeypatch):
-    """Cliente con una base SQLite en memoria nueva por prueba y sin envío real a n8n."""
-    engine = create_engine(
+def engine():
+    """Base SQLite en memoria, nueva en cada prueba."""
+    motor = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
-    Base.metadata.create_all(engine)
+    Base.metadata.create_all(motor)
+    return motor
+
+
+@pytest.fixture()
+def db(engine):
+    """Sesión directa, para probar la capa de servicios sin pasar por HTTP."""
+    with sessionmaker(bind=engine, autoflush=False)() as sesion:
+        yield sesion
+
+
+@pytest.fixture()
+def client(engine, monkeypatch):
+    """Cliente HTTP con la base en memoria y sin envío real a n8n."""
     Session = sessionmaker(bind=engine, autoflush=False)
 
     def override_get_db():
-        db = Session()
+        sesion = Session()
         try:
-            yield db
+            yield sesion
         finally:
-            db.close()
+            sesion.close()
 
     monkeypatch.setattr(settings, "n8n_webhook_url", "")
     monkeypatch.setattr(main_module, "engine", engine)  # el arranque no toca la BD real

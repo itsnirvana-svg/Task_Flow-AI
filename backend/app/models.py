@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import CheckConstraint, Date, DateTime, SmallInteger, String, Text
+from sqlalchemy import CheckConstraint, Date, DateTime, Index, SmallInteger, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
@@ -38,6 +38,7 @@ def _now() -> datetime:
 
 
 _STATUSES = ", ".join(f"'{s.value}'" for s in TaskStatus)
+_NOT_DONE = text(f"status <> '{TaskStatus.DONE.value}'")
 
 
 class TaskModel(Base):
@@ -56,6 +57,14 @@ class TaskModel(Base):
         CheckConstraint(
             f"(status = '{TaskStatus.DONE.value}') = (completed_at IS NOT NULL)",
             name="ck_tasks_completed",
+        ),
+        # Índices de las consultas habituales (los mismos criterios que db/schema.sql).
+        Index("idx_tasks_status", "status"),
+        Index(
+            "idx_tasks_due_pending",
+            "due_date",
+            sqlite_where=_NOT_DONE,
+            postgresql_where=_NOT_DONE,
         ),
     )
 

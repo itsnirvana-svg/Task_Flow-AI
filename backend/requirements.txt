@@ -1,10 +1,8 @@
+# Dependencias de producción. Las de desarrollo y pruebas están en requirements-dev.txt.
+# Cada paquete lleva versión mínima y tope de la siguiente versión mayor.
 fastapi>=0.115,<1.0
-uvicorn[standard]>=0.30
-pydantic-settings>=2.4
-sqlalchemy>=2.0
-anthropic>=0.40
-pytest>=8.0
-httpx>=0.27
-google-api-python-client>=2.140
-google-auth-oauthlib>=1.2
-cryptography>=43.0
+uvicorn[standard]>=0.30,<1.0
+pydantic-settings>=2.4,<3.0
+sqlalchemy>=2.0,<3.0
+httpx>=0.27,<1.0
+anthropic>=0.40,<1.0

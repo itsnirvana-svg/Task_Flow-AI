@@ -9,6 +9,10 @@ import json
 import re
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _comun import SECRETOS_CONOCIDOS as SECRETOS  # noqa: E402  (lista única compartida)
 
 # ---- Archivos que Claude no debe escribir ---------------------------------------------------
 ARCHIVOS_PROTEGIDOS = [
@@ -18,16 +22,6 @@ ARCHIVOS_PROTEGIDOS = [
     (re.compile(r"(^|[\\/])id_(rsa|ed25519|ecdsa)(\.pub)?$"), "clave SSH"),
     (re.compile(r"(^|[\\/])(credentials|secrets)\.json$", re.I), "archivo de credenciales"),
     (re.compile(r"(^|[\\/])\.claude\.json$"), "configuración de Claude con tokens"),
-]
-
-# ---- Secretos dentro del contenido que se va a escribir -------------------------------------
-SECRETOS = [
-    (re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"), "clave de la API de Anthropic"),
-    (re.compile(r"github_pat_[A-Za-z0-9_]{30,}"), "token personal de GitHub"),
-    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b"), "token de GitHub"),
-    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "clave de acceso de AWS"),
-    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"), "clave privada"),
-    (re.compile(r"\bGOCSPX-[A-Za-z0-9_-]{20,}"), "secreto de cliente de Google"),
 ]
 
 # ---- Comandos de Bash/PowerShell peligrosos -------------------------------------------------

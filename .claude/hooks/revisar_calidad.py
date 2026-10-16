@@ -14,13 +14,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _comun import SECRETOS_CONOCIDOS  # noqa: E402  (lista única compartida)
+
 IGNORAR = ("node_modules", ".venv", "venv", "__pycache__", ".git", ".claude", "dist")
 EXTENSIONES = {".py", ".js", ".sql"}
 MAX_LINEA = 100
 
+# Formatos conocidos (compartidos con el guardián) más una regla genérica propia de este hook.
 SECRETOS = [
-    (re.compile(r"sk-ant-[A-Za-z0-9_-]{10,}"), "posible clave de Anthropic"),
-    (re.compile(r"github_pat_[A-Za-z0-9_]{20,}"), "posible token de GitHub"),
+    *SECRETOS_CONOCIDOS,
     (re.compile(r"(?i)\b(api[_-]?key|secret|password|token)\b\s*[:=]\s*['\"][^'\"]{8,}['\"]"),
      "posible credencial escrita en el código"),
 ]

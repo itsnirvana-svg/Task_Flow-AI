@@ -47,7 +47,7 @@ cp .env.example .env        # en Windows: copy .env.example .env
 cd backend
 python -m venv .venv
 .venv\Scripts\activate      # en Linux/macOS: source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # solo producción: requirements.txt
 ```
 
 ## Ejecución
@@ -105,22 +105,29 @@ Un `PATCH` que no cambia nada, o que solo guarda `external_event_id` / `reminded
 Task_Flow-AI/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # aplicación, CORS y arranque
+│   │   ├── main.py              # aplicación, CORS, compresión y arranque
 │   │   ├── config.py            # variables de entorno
-│   │   ├── database.py          # motor y sesión de SQLAlchemy
-│   │   ├── models.py            # modelo de tarea
+│   │   ├── constants.py         # estados, límites y tamaños de página
+│   │   ├── database.py          # motor, sesión y alias DbSession
+│   │   ├── models.py            # modelo de tarea e índices
 │   │   ├── schemas.py           # validación de entrada y salida
-│   │   ├── routers/             # tasks.py, ai.py
-│   │   └── services/            # events.py (n8n), calendar_service.py
+│   │   ├── routers/             # capa HTTP, fina: tasks.py, ai.py
+│   │   └── services/            # lógica reutilizable
+│   │       ├── task_service.py  #   reglas de las tareas (estado, eventos)
+│   │       ├── events.py        #   envío ordenado de eventos a n8n
+│   │       └── calendar_service.py
 │   ├── db/
 │   │   ├── schema.sql           # esquema completo (PostgreSQL)
 │   │   └── migrations/          # migraciones para bases existentes
-│   └── tests/
-├── taskflow-web/                # dashboard HTML/CSS/JS
+│   ├── tests/
+│   ├── requirements.txt         # producción
+│   ├── requirements-dev.txt     # pruebas y lint
+│   └── pyproject.toml           # configuración de pytest y ruff
+├── taskflow-web/                # dashboard HTML/CSS/JS (ver su README)
+│   └── js/{lib,components}/     #   utilidades y componentes reutilizables
 ├── n8n-test/                    # página para probar el webhook
-├── .claude/hooks/               # guardian.py, revisar_calidad.py (opcionales)
-├── .github/workflows/ci.yml     # tests y validación del SQL
-├── _archivo/                    # material descartado, conservado por si acaso
+├── .claude/hooks/               # guardian, revisión de calidad, patrones comunes y pruebas
+├── .github/workflows/ci.yml     # lint, pruebas del backend y de los hooks, validación del SQL
 ├── .env.example
 ├── LICENSE
 └── README.md
@@ -137,7 +144,8 @@ Task_Flow-AI/
 ## Contribuir
 
 1. Crea una rama: `git switch -c feat/mi-mejora`.
-2. Haz commits pequeños y ejecuta `pytest`.
+2. Haz commits pequeños y ejecuta `pytest` y `ruff check app tests` (desde `backend/`) y
+   `pytest .claude/hooks` (desde la raíz).
 3. Abre un Pull Request; el CI debe quedar en verde.
 
 ## Licencia

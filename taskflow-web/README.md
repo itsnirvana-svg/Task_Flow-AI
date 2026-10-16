@@ -1,36 +1,45 @@
 # TaskFlow AI | Dashboard (versión 0.1)
 
-Primera versión del proyecto, hecha solo con **HTML5, CSS3 y JavaScript**.
-No tiene autenticación, base de datos ni backend: las tareas viven en memoria y se reinician al recargar.
+Interfaz hecha solo con **HTML5, CSS3 y JavaScript**, sin dependencias. Por ahora trabaja con datos
+de ejemplo en memoria (se reinician al recargar) y **no está conectada a la API**.
 
 ## Cómo ejecutarlo
 
-Abre `index.html` en el navegador (doble clic). No requiere instalar nada.
+Abre `index.html` en el navegador (doble clic). No requiere instalar nada: los scripts son clásicos
+(no módulos ES), por eso también funciona desde `file://`.
 
 ## Estructura
 
 ```text
 taskflow-web/
-├── index.html          # estructura de la página
-├── css/
-│   └── styles.css      # variables, layout, componentes y responsive
-├── js/
-│   ├── data.js         # tareas de ejemplo
-│   ├── ui.js           # funciones que dibujan tabla y tarjetas
-│   └── app.js          # estado, filtros, búsqueda y diálogo
-└── assets/             # imágenes e iconos (vacía por ahora)
+├── index.html              # estructura, sprite de íconos y orden de carga de scripts
+├── css/styles.css          # variables, layout, componentes y responsive
+└── js/
+    ├── data.js             # tareas de ejemplo
+    ├── store.js            # estado, filtros y suscripción a cambios
+    ├── app.js              # arranque: conecta el estado con los componentes
+    ├── lib/
+    │   ├── dom.js          # h(): creación segura de elementos
+    │   ├── format.js       # etiquetas, fechas y tareas vencidas
+    │   └── utils.js        # debounce
+    └── components/
+        ├── badge.js        # insignia de prioridad / estado
+        ├── stat-cards.js   # tarjetas de estadísticas
+        ├── task-table.js   # tabla de tareas
+        ├── task-dialog.js  # diálogo "Nueva tarea"
+        └── sidebar.js      # barra lateral y menú móvil
 ```
 
-## Qué incluye
+Todo cuelga de un único objeto global, `window.TaskFlow`, para evitar variables sueltas.
 
-- Barra lateral de navegación (se oculta en móvil con botón de menú)
-- Encabezado superior con búsqueda
-- Tarjetas: Tareas totales, Pendientes, En progreso, Completadas
-- Tabla de tareas con prioridad, estado y fecha límite (vencidas en rojo)
-- Filtros por estado y búsqueda por título o proyecto
-- Botón "Nueva tarea" con formulario
-- Diseño responsive
+## Cómo añadir un componente
 
-## Próximos pasos del curso
+1. Crea `js/components/mi-componente.js` con la forma de los existentes (IIFE que asigna a
+   `TaskFlow.components`).
+2. Añade su `<script>` en `index.html`, antes de `store.js`.
+3. Úsalo desde `app.js`.
 
-Persistencia, backend, base de datos, autenticación y automatizaciones con n8n.
+## Próximos pasos
+
+Conectar `store.js` a la API (`/api/tasks`), alineando el vocabulario (`todo/in_progress/done`,
+prioridad 1-4), y añadir editar, completar y eliminar.
