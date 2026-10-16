@@ -1,6 +1,7 @@
 """Entrega de eventos a n8n con outbox: orden, reintentos, durabilidad y límites."""
 
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -11,19 +12,37 @@ from app.constants import OutboxStatus
 from app.models import OutboxEventModel
 from app.schemas import TaskCreate, TaskUpdate
 from app.services import events, task_service
+from helpers import crear
 
 URL = "http://n8n.test/webhook/taskflow"
 
 
 @pytest.fixture()
-def n8n(monkeypatch):
-    """Configura n8n y sustituye el envío HTTP por una lista (o por el comportamiento deseado)."""
+def reintentos_rapidos(monkeypatch):
+    """n8n configurado y esperas de reintento de milisegundos, para pruebas ágiles."""
     monkeypatch.setattr(settings, "n8n_webhook_url", URL)
     monkeypatch.setattr(settings, "events_retry_base_seconds", 0.02)
     monkeypatch.setattr(settings, "events_retry_max_seconds", 0.05)
+
+
+@pytest.fixture()
+def n8n(reintentos_rapidos, monkeypatch):
+    """Sustituye el envío HTTP por una lista que acumula lo que recibiría n8n."""
     recibidos = []
     monkeypatch.setattr(events, "send", recibidos.append)
     return recibidos
+
+
+@contextmanager
+def entregar_pendientes(session_factory):
+    """Arranca un despachador nuevo ("la API arranca"), espera a que vacíe el outbox y lo para."""
+    despachador = events.Dispatcher(session_factory, poll_seconds=0.02)
+    despachador.start()
+    try:
+        assert despachador.drain(timeout=5), "quedaron eventos sin enviar"
+        yield despachador
+    finally:
+        despachador.stop()
 
 
 def filas(session_factory):
@@ -33,12 +52,6 @@ def filas(session_factory):
 
 def esperar(client):
     assert client.app.state.dispatcher.drain(timeout=5), "quedaron eventos sin enviar"
-
-
-def crear(client, titulo="Tarea", **campos):
-    respuesta = client.post("/api/tasks", json={"title": titulo, **campos})
-    assert respuesta.status_code == 201
-    return respuesta.json()
 
 
 # ---------------------------------------------------------------- ciclo de vida
@@ -180,12 +193,8 @@ def test_los_pendientes_se_envian_al_volver_a_arrancar(db, session_factory, n8n)
     assert len(filas(session_factory)) == 2
 
     # …y un despachador nuevo ("la API arranca de nuevo") los entrega en orden.
-    despachador = events.Dispatcher(session_factory, poll_seconds=0.02)
-    despachador.start()
-    try:
-        assert despachador.drain(timeout=5)
-    finally:
-        despachador.stop()
+    with entregar_pendientes(session_factory):
+        pass
 
     assert [c["event"] for c in n8n] == ["task.created", "task.completed"]
 
@@ -193,10 +202,9 @@ def test_los_pendientes_se_envian_al_volver_a_arrancar(db, session_factory, n8n)
 # ---------------------------------------------------------------- reintentos y límites
 
 
-def test_reintenta_con_el_mismo_event_id_hasta_conseguirlo(db, session_factory, monkeypatch):
-    monkeypatch.setattr(settings, "n8n_webhook_url", URL)
-    monkeypatch.setattr(settings, "events_retry_base_seconds", 0.02)
-    monkeypatch.setattr(settings, "events_retry_max_seconds", 0.05)
+def test_reintenta_con_el_mismo_event_id_hasta_conseguirlo(
+    db, session_factory, reintentos_rapidos, monkeypatch
+):
     intentos = []
 
     def falla_dos_veces(carga):
@@ -207,12 +215,8 @@ def test_reintenta_con_el_mismo_event_id_hasta_conseguirlo(db, session_factory, 
     monkeypatch.setattr(events, "send", falla_dos_veces)
     task_service.create_task(db, TaskCreate(title="x"))
 
-    despachador = events.Dispatcher(session_factory, poll_seconds=0.02)
-    despachador.start()
-    try:
-        assert despachador.drain(timeout=5)
-    finally:
-        despachador.stop()
+    with entregar_pendientes(session_factory):
+        pass
 
     assert len(intentos) == 3
     assert len({c["event_id"] for c in intentos}) == 1  # misma clave de idempotencia
@@ -220,10 +224,9 @@ def test_reintenta_con_el_mismo_event_id_hasta_conseguirlo(db, session_factory, 
     assert fila.status == OutboxStatus.SENT.value and fila.attempts == 2 and fila.last_error is None
 
 
-def test_tras_agotar_los_intentos_pasa_a_dead_y_el_resto_continua(db, session_factory, monkeypatch):
-    monkeypatch.setattr(settings, "n8n_webhook_url", URL)
-    monkeypatch.setattr(settings, "events_retry_base_seconds", 0.01)
-    monkeypatch.setattr(settings, "events_retry_max_seconds", 0.02)
+def test_tras_agotar_los_intentos_pasa_a_dead_y_el_resto_continua(
+    db, session_factory, reintentos_rapidos, monkeypatch
+):
     monkeypatch.setattr(settings, "events_max_attempts", 3)
     entregados = []
 
@@ -236,12 +239,8 @@ def test_tras_agotar_los_intentos_pasa_a_dead_y_el_resto_continua(db, session_fa
     task_service.create_task(db, TaskCreate(title="Venenosa"))
     task_service.create_task(db, TaskCreate(title="Buena"))
 
-    despachador = events.Dispatcher(session_factory, poll_seconds=0.02)
-    despachador.start()
-    try:
-        assert despachador.drain(timeout=5)
-    finally:
-        despachador.stop()
+    with entregar_pendientes(session_factory):
+        pass
 
     primera, segunda = filas(session_factory)
     assert primera.status == OutboxStatus.DEAD.value and primera.attempts == 3
@@ -250,10 +249,9 @@ def test_tras_agotar_los_intentos_pasa_a_dead_y_el_resto_continua(db, session_fa
     assert entregados == [2]
 
 
-def test_un_fallo_retrasa_a_los_siguientes_para_conservar_orden(db, session_factory, monkeypatch):
-    monkeypatch.setattr(settings, "n8n_webhook_url", URL)
-    monkeypatch.setattr(settings, "events_retry_base_seconds", 0.05)
-    monkeypatch.setattr(settings, "events_retry_max_seconds", 0.1)
+def test_un_fallo_retrasa_a_los_siguientes_para_conservar_orden(
+    db, session_factory, reintentos_rapidos, monkeypatch
+):
     orden = []
     intento = {"n": 0}
 
@@ -267,12 +265,8 @@ def test_un_fallo_retrasa_a_los_siguientes_para_conservar_orden(db, session_fact
     task_service.create_task(db, TaskCreate(title="Primera"))
     task_service.create_task(db, TaskCreate(title="Segunda"))
 
-    despachador = events.Dispatcher(session_factory, poll_seconds=0.02)
-    despachador.start()
-    try:
-        assert despachador.drain(timeout=5)
-    finally:
-        despachador.stop()
+    with entregar_pendientes(session_factory):
+        pass
 
     assert orden == [1, 2]  # la segunda no se adelantó a la primera
 

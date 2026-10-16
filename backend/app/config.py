@@ -29,10 +29,5 @@ class Settings(BaseSettings):
     events_retry_max_seconds: float = 900.0
     events_retention_days: int = 7  # los enviados se conservan este tiempo como evidencia
 
-    google_client_id: str = ""
-    google_client_secret: str = ""
-    google_redirect_uri: str = "http://localhost:8000/api/calendar/callback"
-    token_encryption_key: str = ""
-
 
 settings = Settings()

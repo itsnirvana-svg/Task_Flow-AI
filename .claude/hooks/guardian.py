@@ -27,18 +27,23 @@ ARCHIVOS_PROTEGIDOS = [
 # ---- Comandos de Bash/PowerShell peligrosos -------------------------------------------------
 COMANDOS = [
     (re.compile(r"\bgit\b.*\bpush\b.*(\s--force(?![-\w])|\s-f\b)"),
-     "git push --force reescribe el historial remoto (usa --force-with-lease si es imprescindible)"),
+     "git push --force reescribe el historial remoto (usa --force-with-lease)"),
     (re.compile(r"\bgit\b.*\bpush\b.*\b(main|master)\b"),
      "push directo a main/master: trabaja en una rama y abre un Pull Request"),
-    (re.compile(r"\bgit\b.*\breset\b.*--hard"), "git reset --hard descarta cambios sin posibilidad de recuperarlos"),
+    (re.compile(r"\bgit\b.*\breset\b.*--hard"),
+     "git reset --hard descarta cambios sin posibilidad de recuperarlos"),
     (re.compile(r"\bgit\b.*\bclean\b.*\s-\w*[fd]"), "git clean borra archivos no versionados"),
     (re.compile(r"\brm\s+-[a-zA-Z]*[rR]"), "rm recursivo: borra carpetas completas"),
     (re.compile(r"(?i)\bremove-item\b.*-recurse"), "Remove-Item -Recurse borra carpetas completas"),
     (re.compile(r"(?i)\b(drop\s+(table|database|schema)|truncate\s+(table\s+)?\w+)"),
      "sentencia SQL destructiva (DROP/TRUNCATE)"),
-    (re.compile(r"(?i)\b(cat|type|more|less|head|tail|get-content|gc)\b[^|;&\n]*\.env(?!\.(example|sample|template))\b"),
+    (re.compile(
+        r"(?i)\b(cat|type|more|less|head|tail|get-content|gc)\b"
+        r"[^|;&\n]*\.env(?!\.(example|sample|template))\b"),
      "leer .env expondría secretos en la conversación"),
-    (re.compile(r"(?i)\b(curl|wget|iwr|invoke-webrequest)\b[^\n]*\|\s*(sh|bash|zsh|iex|invoke-expression|python)\b"),
+    (re.compile(
+        r"(?i)\b(curl|wget|iwr|invoke-webrequest)\b[^\n]*"
+        r"\|\s*(sh|bash|zsh|iex|invoke-expression|python)\b"),
      "descargar y ejecutar código remoto en un solo paso"),
 ]
 
@@ -47,8 +52,10 @@ RAMAS_PROTEGIDAS = {"main", "master"}
 
 def rama_actual():
     try:
-        r = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True, timeout=5)
-        return r.stdout.strip() if r.returncode == 0 else ""
+        resultado = subprocess.run(
+            ["git", "branch", "--show-current"], capture_output=True, text=True, timeout=5
+        )
+        return resultado.stdout.strip() if resultado.returncode == 0 else ""
     except (OSError, subprocess.SubprocessError):
         return ""
 
@@ -69,7 +76,7 @@ def revisar_archivo(entrada):
     for texto in textos_a_escribir(entrada):
         for patron, motivo in SECRETOS:
             if patron.search(texto):
-                return f"el contenido incluye una {motivo}. Usa una variable de entorno y .env.example."
+                return f"el contenido incluye una {motivo}. Usa una variable de entorno."
     return None
 
 

@@ -1,0 +1,22 @@
+# Configuración común de las herramientas de Python (backend, hooks y utilidades).
+# Está en la raíz para que `pytest` y `ruff` funcionen igual ejecutados desde cualquier carpeta.
+
+[tool.pytest.ini_options]
+# `pytest` a secas (CI, README) encuentra la aplicación y los ayudantes de pruebas.
+pythonpath = ["backend", "backend/tests"]
+# Desde la raíz, `pytest` ejecuta las pruebas del backend y las de los hooks.
+testpaths = ["backend/tests", ".claude/hooks"]
+
+[tool.ruff]
+line-length = 100
+# Se soporta Python 3.10+, por eso se usa timezone.utc en lugar de datetime.UTC (3.11+).
+target-version = "py310"
+# Dónde están los módulos propios (para ordenar los imports igual desde cualquier carpeta).
+src = ["backend", "backend/tests", ".claude/hooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "SIM", "I", "C4", "PIE"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Depends() y Query() en los argumentos son el idioma estándar de FastAPI.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]

@@ -30,3 +30,4 @@ Thumbs.db
 taskflow.db
 .claude/reports/
 
+taskflow-web/dist/

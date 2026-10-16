@@ -1,13 +1,14 @@
 /* Componente: tarjetas de estadísticas (totales y por estado). */
 (function (TF) {
   "use strict";
+  const { STATUS } = TF.format;
 
   // Qué tarjeta muestra qué recuento (null = total de tareas).
   const CARDS = [
     { id: "statTotal", status: null },
-    { id: "statPending", status: "pendiente" },
-    { id: "statProgress", status: "en-progreso" },
-    { id: "statDone", status: "completada" },
+    { id: "statPending", status: STATUS.PENDING },
+    { id: "statProgress", status: STATUS.IN_PROGRESS },
+    { id: "statDone", status: STATUS.DONE },
   ];
 
   function update(tasks) {

@@ -35,13 +35,13 @@ def hallazgo(nivel, linea, texto):
 
 def revisar_comunes(lineas):
     out = []
-    for n, l in enumerate(lineas, 1):
+    for n, linea in enumerate(lineas, 1):
         for patron, desc in SECRETOS:
-            if patron.search(l):
+            if patron.search(linea):
                 out.append(hallazgo("ERROR", n, desc))
-        if len(l) > MAX_LINEA:
-            out.append(hallazgo("AVISO", n, f"línea de {len(l)} caracteres (máx. {MAX_LINEA})"))
-        if re.search(r"\b(TODO|FIXME|XXX)\b", l):
+        if len(linea) > MAX_LINEA:
+            out.append(hallazgo("AVISO", n, f"línea de {len(linea)} caracteres (máx. {MAX_LINEA})"))
+        if re.search(r"\b(TODO|FIXME|XXX)\b", linea):
             out.append(hallazgo("AVISO", n, "marcador pendiente (TODO/FIXME)"))
     return out
 
@@ -53,16 +53,20 @@ def revisar_python(ruta, texto):
     except SyntaxError as e:
         return [hallazgo("ERROR", e.lineno or 0, f"error de sintaxis: {e.msg}")]
 
+    es_prueba = "tests" in ruta.parts
     for nodo in ast.walk(arbol):
         if isinstance(nodo, ast.ExceptHandler) and nodo.type is None:
-            out.append(hallazgo("AVISO", nodo.lineno, "'except:' sin tipo; captura también interrupciones"))
-        if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for d in nodo.args.defaults + nodo.args.kw_defaults:
-                if isinstance(d, (ast.List, ast.Dict, ast.Set)):
-                    out.append(hallazgo("AVISO", nodo.lineno, f"'{nodo.name}': valor por defecto mutable"))
-            if not ast.get_docstring(nodo) and not nodo.name.startswith("_") and "tests" not in ruta.parts:
+            out.append(hallazgo("AVISO", nodo.lineno, "'except:' sin tipo; captura interrupciones"))
+        if isinstance(nodo, ast.FunctionDef | ast.AsyncFunctionDef):
+            for valor in nodo.args.defaults + nodo.args.kw_defaults:
+                if isinstance(valor, ast.List | ast.Dict | ast.Set):
+                    texto = f"'{nodo.name}': valor por defecto mutable"
+                    out.append(hallazgo("AVISO", nodo.lineno, texto))
+            sin_docstring = not ast.get_docstring(nodo) and not nodo.name.startswith("_")
+            if sin_docstring and not es_prueba:
                 out.append(hallazgo("INFO", nodo.lineno, f"'{nodo.name}' sin docstring"))
-        if isinstance(nodo, ast.Call) and getattr(nodo.func, "id", "") == "print" and "tests" not in ruta.parts:
+        es_print = isinstance(nodo, ast.Call) and getattr(nodo.func, "id", "") == "print"
+        if es_print and not es_prueba:
             out.append(hallazgo("AVISO", nodo.lineno, "uso de print(); preferible logging"))
 
     ruff = shutil.which("ruff")
@@ -81,15 +85,16 @@ def revisar_js(ruta, lineas):
     if node:
         r = subprocess.run([node, "--check", str(ruta)], capture_output=True, text=True, timeout=20)
         if r.returncode != 0:
-            out.append(hallazgo("ERROR", 0, "error de sintaxis: " + r.stderr.strip().splitlines()[-1]))
-    for n, l in enumerate(lineas, 1):
-        if re.search(r"\bconsole\.log\(", l):
+            detalle = r.stderr.strip().splitlines()[-1]
+            out.append(hallazgo("ERROR", 0, "error de sintaxis: " + detalle))
+    for n, linea in enumerate(lineas, 1):
+        if re.search(r"\bconsole\.log\(", linea):
             out.append(hallazgo("AVISO", n, "console.log olvidado"))
-        if re.search(r"\bvar\s+\w", l):
+        if re.search(r"\bvar\s+\w", linea):
             out.append(hallazgo("AVISO", n, "usa let/const en lugar de var"))
-        if re.search(r"[^=!<>]==[^=]", l) and "//" not in l.split("==")[0]:
+        if re.search(r"[^=!<>]==[^=]", linea) and "//" not in linea.split("==")[0]:
             out.append(hallazgo("AVISO", n, "usa === en lugar de =="))
-        if re.search(r"\.innerHTML\s*=", l) or re.search(r"\beval\(", l):
+        if re.search(r"\.innerHTML\s*=", linea) or re.search(r"\beval\(", linea):
             out.append(hallazgo("ERROR", n, "innerHTML/eval: riesgo de XSS"))
     return out
 
@@ -99,7 +104,9 @@ def revisar_sql(lineas):
     texto = "\n".join(lineas).upper()
     if re.search(r"\bSELECT\s+\*", texto):
         out.append(hallazgo("AVISO", 0, "SELECT *: lista las columnas necesarias"))
-    if re.search(r"\bDELETE\s+FROM\s+\w+\s*;", texto) or re.search(r"\bUPDATE\s+\w+\s+SET\s[^;]*;", texto) and "WHERE" not in texto:
+    delete_sin_where = re.search(r"\bDELETE\s+FROM\s+\w+\s*;", texto)
+    update_sin_where = re.search(r"\bUPDATE\s+\w+\s+SET\s[^;]*;", texto) and "WHERE" not in texto
+    if delete_sin_where or update_sin_where:
         out.append(hallazgo("ERROR", 0, "DELETE/UPDATE sin WHERE"))
     return out
 

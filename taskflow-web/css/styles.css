@@ -1,32 +1,53 @@
 /* ==========================================================================
    TaskFlow AI | Estilos del dashboard
    Organización: variables → base → layout → componentes → responsive
+   Los valores que se repiten viven en variables: se cambian en un solo sitio.
    ========================================================================== */
 
 /* ---------- Variables ---------- */
 :root {
+  /* Superficies y texto */
   --color-bg: #f4f6fb;
   --color-surface: #ffffff;
+  --color-surface-alt: #fafbfd;
   --color-border: #e4e8f0;
   --color-text: #1b2333;
   --color-muted: #667085;
+  --color-on-primary: #fff;
 
+  /* Marca */
   --color-primary: #4f46e5;
   --color-primary-dark: #4338ca;
   --color-primary-soft: #eef0ff;
+  --color-primary-light: #a5b4fc;
+  --ring: rgba(79, 70, 229, 0.15);
+  --ring-strong: rgba(79, 70, 229, 0.45);
 
+  /* Barra lateral y fondos translúcidos */
   --color-sidebar: #111827;
   --color-sidebar-text: #aab2c5;
+  --color-scrim: rgba(17, 24, 39, 0.5);
 
+  /* Estados e insignias: color de acento, fondo suave y texto */
   --color-pending: #d97706;
   --color-pending-soft: #fef3c7;
+  --color-pending-text: #92400e;
   --color-progress: #2563eb;
   --color-progress-soft: #dbeafe;
+  --color-progress-text: #1d4ed8;
   --color-done: #059669;
   --color-done-soft: #d1fae5;
+  --color-done-text: #047857;
   --color-danger: #dc2626;
+  --color-danger-soft: #fee2e2;
+  --color-danger-text: #b91c1c;
+  --color-neutral-soft: #e5e7eb;
+  --color-neutral-text: #374151;
 
+  /* Forma */
   --radius: 12px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
   --sidebar-width: 248px;
   --topbar-height: 64px;
@@ -55,7 +76,7 @@ button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
 
 :focus-visible {
-  outline: 3px solid rgba(79, 70, 229, 0.45);
+  outline: 3px solid var(--ring-strong);
   outline-offset: 2px;
 }
 
@@ -119,7 +140,7 @@ a { color: inherit; text-decoration: none; }
   align-items: center;
   gap: 10px;
   padding: 4px 10px 22px;
-  color: #fff;
+  color: var(--color-on-primary);
   font-size: 1.15rem;
 }
 
@@ -128,11 +149,11 @@ a { color: inherit; text-decoration: none; }
   place-items: center;
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary);
 }
 
-.brand-name strong { color: #a5b4fc; }
+.brand-name strong { color: var(--color-primary-light); }
 
 .nav { display: flex; flex-direction: column; gap: 4px; }
 
@@ -141,15 +162,15 @@ a { color: inherit; text-decoration: none; }
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   transition: background 0.15s, color 0.15s;
 }
 
-.nav-link:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.nav-link:hover { background: rgba(255, 255, 255, 0.07); color: var(--color-on-primary); }
 
 .nav-link.is-active {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-on-primary);
 }
 
 .sidebar-foot {
@@ -163,7 +184,7 @@ a { color: inherit; text-decoration: none; }
   position: fixed;
   inset: 0;
   z-index: 30;
-  background: rgba(17, 24, 39, 0.5);
+  background: var(--color-scrim);
 }
 
 /* ---------- Encabezado superior ---------- */
@@ -190,7 +211,7 @@ a { color: inherit; text-decoration: none; }
   width: 40px;
   height: 40px;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
 }
 
@@ -203,7 +224,7 @@ a { color: inherit; text-decoration: none; }
   padding: 0 12px;
   height: 40px;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--color-bg);
   color: var(--color-muted);
 }
@@ -217,7 +238,7 @@ a { color: inherit; text-decoration: none; }
   color: var(--color-text);
 }
 
-.search:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
+.search:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--ring); }
 
 .user { display: flex; align-items: center; gap: 10px; }
 
@@ -253,12 +274,12 @@ a { color: inherit; text-decoration: none; }
   gap: 8px;
   padding: 10px 16px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   font-weight: 600;
   transition: background 0.15s, border-color 0.15s;
 }
 
-.btn-primary { background: var(--color-primary); color: #fff; }
+.btn-primary { background: var(--color-primary); color: var(--color-on-primary); }
 .btn-primary:hover { background: var(--color-primary-dark); }
 
 .btn-ghost { background: transparent; border-color: var(--color-border); }
@@ -317,7 +338,7 @@ a { color: inherit; text-decoration: none; }
 .chip {
   padding: 6px 12px;
   border: 1px solid var(--color-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surface);
   font-size: 0.85rem;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -348,10 +369,10 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--color-muted);
-  background: #fafbfd;
+  background: var(--color-surface-alt);
 }
 
-.table tbody tr:hover { background: #fafbfd; }
+.table tbody tr:hover { background: var(--color-surface-alt); }
 .table tbody tr:last-child td { border-bottom: 0; }
 
 .task-title { font-weight: 600; }
@@ -359,23 +380,25 @@ a { color: inherit; text-decoration: none; }
 
 .empty { padding: 28px 20px; text-align: center; color: var(--color-muted); }
 
-/* ---------- Insignias ---------- */
+/* ---------- Insignias ----------
+   Cada variante solo define su par de colores; la forma está en .badge. */
 .badge {
   display: inline-block;
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
+  background: var(--badge-bg);
+  color: var(--badge-fg);
 }
 
-.badge-alta { background: #fee2e2; color: #b91c1c; }
-.badge-media { background: var(--color-pending-soft); color: #92400e; }
-.badge-baja { background: #e5e7eb; color: #374151; }
-
-.badge-pendiente { background: var(--color-pending-soft); color: #92400e; }
-.badge-en-progreso { background: var(--color-progress-soft); color: #1d4ed8; }
-.badge-completada { background: var(--color-done-soft); color: #047857; }
+.badge-alta { --badge-bg: var(--color-danger-soft); --badge-fg: var(--color-danger-text); }
+.badge-baja { --badge-bg: var(--color-neutral-soft); --badge-fg: var(--color-neutral-text); }
+.badge-media,
+.badge-pendiente { --badge-bg: var(--color-pending-soft); --badge-fg: var(--color-pending-text); }
+.badge-en-progreso { --badge-bg: var(--color-progress-soft); --badge-fg: var(--color-progress-text); }
+.badge-completada { --badge-bg: var(--color-done-soft); --badge-fg: var(--color-done-text); }
 
 /* ---------- Diálogo ---------- */
 .dialog {
@@ -388,7 +411,7 @@ a { color: inherit; text-decoration: none; }
   box-shadow: 0 20px 50px rgba(16, 24, 40, 0.3);
 }
 
-.dialog::backdrop { background: rgba(17, 24, 39, 0.5); }
+.dialog::backdrop { background: var(--color-scrim); }
 .dialog h2 { margin-bottom: 18px; font-size: 1.2rem; }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; flex: 1; }
@@ -399,7 +422,7 @@ a { color: inherit; text-decoration: none; }
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
 }
 
@@ -407,7 +430,7 @@ a { color: inherit; text-decoration: none; }
 .field select:focus {
   outline: 0;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  box-shadow: 0 0 0 3px var(--ring);
 }
 
 .field-row { display: flex; gap: 12px; }
@@ -430,7 +453,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 @media (max-width: 600px) {
-  .user-name { display: none; }
+  .user-name,
   .topbar-title { display: none; }
   .page-head { flex-direction: column; align-items: stretch; }
   .page-head .btn { justify-content: center; }

@@ -21,7 +21,7 @@ ocurre (tarea creada, completada, eliminada).
 | Eventos hacia n8n (`task.created`, `task.updated`, `task.completed`, `task.deleted`) | ✅ Outbox transaccional con reintentos; sobrevive a caídas de n8n y de la API |
 | Priorización con IA | 🟡 Implementada; requiere `ANTHROPIC_API_KEY` |
 | Dashboard web (`taskflow-web`) | 🟡 Interfaz lista; aún con datos de ejemplo, **sin conectar a la API** |
-| Google Calendar | 🔴 Esqueleto (`CalendarService`) |
+| Google Calendar | 🔴 Pendiente (las columnas `external_event_id` y `reminded_at` ya existen para él) |
 | Autenticación de usuarios, proyectos | 🔴 Pendiente |
 
 ## Tecnologías
@@ -33,7 +33,8 @@ ocurre (tarea creada, completada, eliminada).
 | Datos | SQLAlchemy 2; SQLite (desarrollo) / PostgreSQL |
 | IA | API de Anthropic (Claude) |
 | Automatización | n8n (webhooks) |
-| Calidad | pytest, GitHub Actions |
+| Calidad | pytest, ruff, GitHub Actions |
+| Empaquetado de la interfaz | rjsmin y rcssmin (`tools/build_web.py`) |
 
 ## Instalación
 
@@ -57,11 +58,27 @@ pip install -r requirements-dev.txt   # solo producción: requirements.txt
 cd backend
 uvicorn app.main:app --reload
 
-# Pruebas
+# Pruebas del backend y de los hooks (desde la raíz del proyecto)
 pytest
+
+# Análisis de estilo
+ruff check backend/app backend/tests .claude tools
 ```
 
 Dashboard: abre `taskflow-web/index.html` en el navegador.
+
+### Versión de producción de la interfaz
+
+El código fuente de `taskflow-web` se mantiene legible (11 scripts, CSS con variables). Para publicar,
+`tools/build_web.py` genera `taskflow-web/dist/` con los scripts unidos y minificados, el CSS
+minificado y nombres con resumen del contenido (`app.<hash>.js`), de modo que el navegador los
+guarda en caché y solo los vuelve a descargar si cambian: **de 13 peticiones a 3 y ~36 % menos
+bytes comprimidos**.
+
+```bash
+pip install -r tools/requirements.txt
+python tools/build_web.py
+```
 
 ### Conectar con n8n
 
@@ -133,20 +150,22 @@ Task_Flow-AI/
 │   │   ├── routers/             # capa HTTP, fina: tasks.py, ai.py
 │   │   └── services/            # lógica reutilizable
 │   │       ├── task_service.py  #   reglas de las tareas (estado, eventos)
-│   │       ├── events.py        #   outbox: registro y despachador de eventos a n8n
-│   │       └── calendar_service.py
+│   │       └── events.py        #   outbox: registro y despachador de eventos a n8n
 │   ├── db/
 │   │   ├── schema.sql           # esquema completo (PostgreSQL)
 │   │   └── migrations/          # migraciones para bases existentes
-│   ├── tests/
+│   ├── tests/                   # pruebas (helpers.py y conftest.py son comunes)
 │   ├── requirements.txt         # producción
-│   ├── requirements-dev.txt     # pruebas y lint
-│   └── pyproject.toml           # configuración de pytest y ruff
+│   └── requirements-dev.txt     # pruebas y lint
 ├── taskflow-web/                # dashboard HTML/CSS/JS (ver su README)
 │   └── js/{lib,components}/     #   utilidades y componentes reutilizables
-├── n8n-test/                    # página para probar el webhook
+├── tools/
+│   ├── build_web.py             # genera taskflow-web/dist (unir, minificar, caché)
+│   ├── requirements.txt         # minificadores
+│   └── n8n-test/                # página para probar el webhook a mano
 ├── .claude/hooks/               # guardian, revisión de calidad, patrones comunes y pruebas
-├── .github/workflows/ci.yml     # lint, pruebas del backend y de los hooks, validación del SQL
+├── .github/workflows/ci.yml     # lint, pruebas, hooks, empaquetado de la interfaz y SQL
+├── pyproject.toml               # configuración común de pytest y ruff
 ├── .env.example
 ├── LICENSE
 └── README.md
@@ -163,8 +182,8 @@ Task_Flow-AI/
 ## Contribuir
 
 1. Crea una rama: `git switch -c feat/mi-mejora`.
-2. Haz commits pequeños y ejecuta `pytest` y `ruff check app tests` (desde `backend/`) y
-   `pytest .claude/hooks` (desde la raíz).
+2. Haz commits pequeños y, desde la raíz, ejecuta `pytest` y
+   `ruff check backend/app backend/tests .claude tools`.
 3. Abre un Pull Request; el CI debe quedar en verde.
 
 ## Licencia

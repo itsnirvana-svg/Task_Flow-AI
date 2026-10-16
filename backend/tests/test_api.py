@@ -3,13 +3,7 @@ from types import SimpleNamespace
 from app.config import ENV_FILE, settings
 from app.constants import DESCRIPTION_MAX, TaskStatus
 from app.routers import ai
-
-
-def crear(client, **campos):
-    respuesta = client.post("/api/tasks", json={"title": "Tarea", **campos})
-    assert respuesta.status_code == 201, respuesta.text
-    return respuesta.json()
-
+from helpers import crear
 
 # ---------------------------------------------------------------- tareas
 

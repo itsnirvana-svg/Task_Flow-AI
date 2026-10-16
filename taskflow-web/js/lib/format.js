@@ -1,9 +1,15 @@
-/* Etiquetas y formato de datos de tareas. */
+/* Vocabulario de estados y formato de datos de tareas (única fuente de verdad). */
 (function (TF) {
   "use strict";
 
+  const STATUS = { PENDING: "pendiente", IN_PROGRESS: "en-progreso", DONE: "completada" };
+
   const LABELS = {
-    status: { "pendiente": "Pendiente", "en-progreso": "En progreso", "completada": "Completada" },
+    status: {
+      [STATUS.PENDING]: "Pendiente",
+      [STATUS.IN_PROGRESS]: "En progreso",
+      [STATUS.DONE]: "Completada",
+    },
     priority: { alta: "Alta", media: "Media", baja: "Baja" },
   };
 
@@ -23,11 +29,11 @@
   }
 
   function isOverdue(task) {
-    if (!task.due || task.status === "completada") return false;
+    if (!task.due || task.status === STATUS.DONE) return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return parseDate(task.due) < today;
   }
 
-  TF.format = { LABELS, formatDate, isOverdue };
+  TF.format = { STATUS, LABELS, formatDate, isOverdue };
 })((window.TaskFlow = window.TaskFlow || {}));
