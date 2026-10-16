@@ -1,10 +1,20 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import CheckConstraint, Date, DateTime, Index, SmallInteger, String, Text, text
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    Date,
+    DateTime,
+    Index,
+    SmallInteger,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
-from .constants import PRIORITY_DEFAULT, PRIORITY_MAX, PRIORITY_MIN, TaskStatus
+from .constants import PRIORITY_DEFAULT, PRIORITY_MAX, PRIORITY_MIN, OutboxStatus, TaskStatus
 from .database import Base
 
 
@@ -79,3 +89,33 @@ class TaskModel(Base):
     reminded_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now, onupdate=_now)
+
+
+_OUTBOX_STATUSES = ", ".join(f"'{s.value}'" for s in OutboxStatus)
+_PENDING = text(f"status = '{OutboxStatus.PENDING.value}'")
+
+
+class OutboxEventModel(Base):
+    """Evento pendiente de enviar a n8n (patrón *outbox* transaccional).
+
+    Se guarda en la MISMA transacción que el cambio que lo origina: o se confirman los dos
+    o ninguno. Un despachador en segundo plano los envía en orden de `id`, con reintentos.
+    El `id` (creciente y persistente) es el `sequence` que recibe n8n.
+    """
+
+    __tablename__ = "event_outbox"
+    __table_args__ = (
+        CheckConstraint(f"status IN ({_OUTBOX_STATUSES})", name="ck_outbox_status"),
+        Index("idx_outbox_pending", "id", sqlite_where=_PENDING, postgresql_where=_PENDING),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(36), unique=True)  # clave de idempotencia
+    event: Mapped[str] = mapped_column(String(50))
+    data: Mapped[dict] = mapped_column(JSON)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+    status: Mapped[str] = mapped_column(String(10), default=OutboxStatus.PENDING.value)
+    attempts: Mapped[int] = mapped_column(default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+    last_error: Mapped[str | None] = mapped_column(Text, default=None)
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)

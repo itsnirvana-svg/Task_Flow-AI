@@ -101,6 +101,22 @@ CREATE TABLE workflow_logs (
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
+-- Eventos pendientes de enviar a n8n (patrón outbox transaccional). Se guardan en la misma
+-- transacción que el cambio que los origina; un despachador los envía en orden y con reintentos.
+CREATE TABLE event_outbox (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_id        VARCHAR(36)  NOT NULL UNIQUE,   -- clave de idempotencia para n8n
+    event           VARCHAR(50)  NOT NULL,
+    data            JSONB        NOT NULL,
+    occurred_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    status          VARCHAR(10)  NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'sent', 'dead')),
+    attempts        INTEGER      NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    last_error      TEXT,
+    sent_at         TIMESTAMPTZ
+);
+
 -- Triggers de updated_at
 CREATE TRIGGER trg_projects_updated_at BEFORE UPDATE ON projects
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -121,6 +137,7 @@ CREATE INDEX idx_comments_user       ON comments (user_id);
 CREATE INDEX idx_task_labels_label   ON task_labels (label_id);
 CREATE INDEX idx_ai_project          ON ai_suggestions (project_id);
 CREATE INDEX idx_workflow_logs_task  ON workflow_logs (task_id);
+CREATE INDEX idx_outbox_pending      ON event_outbox (id) WHERE status = 'pending';
 CREATE INDEX idx_tasks_due_pending   ON tasks (due_date) WHERE status <> 'done';
 
 COMMIT;

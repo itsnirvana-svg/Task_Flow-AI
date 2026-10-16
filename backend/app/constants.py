@@ -9,6 +9,12 @@ class TaskStatus(str, Enum):
     DONE = "done"
 
 
+class OutboxStatus(str, Enum):
+    PENDING = "pending"  # a la espera de enviarse (o de reintentarse)
+    SENT = "sent"  # n8n lo aceptó
+    DEAD = "dead"  # se agotaron los intentos; queda como evidencia
+
+
 PRIORITY_MIN = 1  # baja
 PRIORITY_MAX = 4  # urgente
 PRIORITY_DEFAULT = 2

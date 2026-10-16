@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     # Vacío = no se envían eventos.
     n8n_webhook_url: str = ""
     n8n_webhook_secret: str = ""
+    # Entrega de eventos (outbox): reintentos con espera creciente y límite de intentos.
+    events_poll_seconds: float = 1.0
+    events_max_attempts: int = 8
+    events_retry_base_seconds: float = 5.0
+    events_retry_max_seconds: float = 900.0
+    events_retention_days: int = 7  # los enviados se conservan este tiempo como evidencia
 
     google_client_id: str = ""
     google_client_secret: str = ""

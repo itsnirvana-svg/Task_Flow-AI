@@ -18,7 +18,7 @@ ocurre (tarea creada, completada, eliminada).
 |---|---|
 | API REST de tareas (crear, listar con filtros y paginación, editar, eliminar) | ✅ Funciona; con SQLite en desarrollo |
 | Persistencia | ✅ SQLAlchemy; SQLite por defecto, PostgreSQL con `DATABASE_URL` |
-| Eventos hacia n8n (`task.created`, `task.updated`, `task.completed`, `task.deleted`) | ✅ Implementado y probado con simulación |
+| Eventos hacia n8n (`task.created`, `task.updated`, `task.completed`, `task.deleted`) | ✅ Outbox transaccional con reintentos; sobrevive a caídas de n8n y de la API |
 | Priorización con IA | 🟡 Implementada; requiere `ANTHROPIC_API_KEY` |
 | Dashboard web (`taskflow-web`) | 🟡 Interfaz lista; aún con datos de ejemplo, **sin conectar a la API** |
 | Google Calendar | 🔴 Esqueleto (`CalendarService`) |
@@ -81,7 +81,25 @@ Cada evento llega con esta forma:
 }
 ```
 
-El envío es en segundo plano: si n8n no responde, la API no se ve afectada.
+### Entrega de eventos (outbox)
+
+Cada evento se guarda en la tabla `event_outbox` **en la misma transacción** que el cambio de la
+tarea, y un despachador en segundo plano lo envía a n8n:
+
+| Situación | Qué ocurre |
+|---|---|
+| n8n responde | El evento pasa a `sent` |
+| n8n cae, tarda o devuelve error | El evento sigue en la base de datos y se **reintenta** con espera creciente (5 s, 10 s, 20 s… hasta 15 min) |
+| Se agotan los intentos (8 por defecto) | Pasa a `dead` (queda como evidencia) y el resto continúa |
+| La API se reinicia o se cae | Los pendientes se envían al volver a arrancar: **no se pierde ninguno** |
+| n8n colgado | Las peticiones a la API no se ven afectadas |
+
+Los ajustes (`EVENTS_MAX_ATTEMPTS`, `EVENTS_RETRY_BASE_SECONDS`, `EVENTS_RETRY_MAX_SECONDS`,
+`EVENTS_RETENTION_DAYS`) están en `.env.example`. Para ver el estado de la cola:
+
+```sql
+SELECT status, count(*) FROM event_outbox GROUP BY status;
+```
 
 | Evento | Cuándo se emite |
 |---|---|
@@ -90,11 +108,12 @@ El envío es en segundo plano: si n8n no responde, la API no se ve afectada.
 | `task.updated` | Cuando cambian otros datos; `data.changed` lista los campos |
 | `task.deleted` | Al eliminar; incluye `external_event_id` para borrar el evento de Calendar |
 
-`occurred_at` y `sequence` se fijan **cuando ocurre el cambio**, y los eventos salen en ese
-mismo orden (cola con un único hilo de envío). Aun así, con varias instancias de la API o
-reintentos pueden llegar desordenados: **los flujos de n8n deben consultar
-`GET /api/tasks/{id}` para conocer el estado actual** en lugar de fiarse solo del evento, y
-descartar `event_id` ya procesados.
+`occurred_at` se fija **cuando ocurre el cambio**, y `sequence` es el identificador creciente del
+evento en el outbox (sobrevive a reinicios). La entrega es **al menos una vez** y en orden: tras
+un fallo (por ejemplo, n8n recibió el evento pero tardó más de 5 s en responder) el mismo evento
+puede llegar **dos veces con el mismo `event_id`**. Por eso los flujos de n8n deben **descartar
+los `event_id` ya procesados** y **consultar `GET /api/tasks/{id}`** para conocer el estado
+actual en lugar de fiarse solo del evento.
 
 Un `PATCH` que no cambia nada, o que solo guarda `external_event_id` / `reminded_at`
 (campos que escriben las automatizaciones), no emite eventos, para evitar bucles.
@@ -114,7 +133,7 @@ Task_Flow-AI/
 │   │   ├── routers/             # capa HTTP, fina: tasks.py, ai.py
 │   │   └── services/            # lógica reutilizable
 │   │       ├── task_service.py  #   reglas de las tareas (estado, eventos)
-│   │       ├── events.py        #   envío ordenado de eventos a n8n
+│   │       ├── events.py        #   outbox: registro y despachador de eventos a n8n
 │   │       └── calendar_service.py
 │   ├── db/
 │   │   ├── schema.sql           # esquema completo (PostgreSQL)

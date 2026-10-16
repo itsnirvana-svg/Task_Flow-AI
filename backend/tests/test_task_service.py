@@ -1,12 +1,13 @@
 """Pruebas de la capa de servicios y de la configuración de rendimiento."""
 
 import pytest
-from sqlalchemy import inspect
+from sqlalchemy import inspect, select
 
 from app.config import settings
 from app.constants import TaskStatus
+from app.models import OutboxEventModel
 from app.schemas import TaskCreate, TaskUpdate
-from app.services import events, task_service
+from app.services import task_service
 from app.services.task_service import TaskNotFoundError
 
 
@@ -28,17 +29,15 @@ def test_tarea_inexistente_lanza_error_de_dominio(db):
         task_service.delete_task(db, 999)
 
 
-def test_el_servicio_publica_eventos_igual_que_la_api(db, monkeypatch):
-    cargas = []
+def test_el_servicio_anota_los_eventos_igual_que_la_api(db, monkeypatch):
     monkeypatch.setattr(settings, "n8n_webhook_url", "http://n8n.test/webhook/taskflow")
-    monkeypatch.setattr(events, "send", cargas.append)
 
     tarea = task_service.create_task(db, TaskCreate(title="x"))
     task_service.update_task(db, tarea.id, TaskUpdate(status="done"))
     task_service.delete_task(db, tarea.id)
 
-    assert events.drain(timeout=5)
-    assert [c["event"] for c in cargas] == ["task.created", "task.completed", "task.deleted"]
+    anotados = [f.event for f in db.scalars(select(OutboxEventModel).order_by(OutboxEventModel.id))]
+    assert anotados == ["task.created", "task.completed", "task.deleted"]
 
 
 def test_el_modelo_define_los_indices_de_las_consultas_habituales(engine):

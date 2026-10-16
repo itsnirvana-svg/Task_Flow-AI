@@ -54,9 +54,11 @@ def create_task(db: Session, payload: TaskCreate) -> TaskModel:
     task = TaskModel(**payload.model_dump())
     _sync_completed_at(task)
     db.add(task)
-    db.commit()
+    db.flush()  # asigna el id antes de anotar el evento
+    events.record(db, "task.created", {"task_id": task.id})
+    db.commit()  # tarea y evento se confirman juntos
+    events.notify()
     db.refresh(task)
-    events.publish("task.created", {"task_id": task.id})
     return task
 
 
@@ -76,14 +78,15 @@ def update_task(db: Session, task_id: int, payload: TaskUpdate) -> TaskModel:
     for field, value in changed.items():
         setattr(task, field, value)
     _sync_completed_at(task)
-    db.commit()
-    db.refresh(task)
 
     # Completar emite solo task.completed; el resto de cambios, task.updated.
     if task.status == TaskStatus.DONE and not was_done:
-        events.publish("task.completed", {"task_id": task.id})
+        events.record(db, "task.completed", {"task_id": task.id})
     elif set(changed) - INTERNAL_FIELDS:
-        events.publish("task.updated", {"task_id": task.id, "changed": sorted(changed)})
+        events.record(db, "task.updated", {"task_id": task.id, "changed": sorted(changed)})
+    db.commit()  # cambio y evento se confirman juntos
+    events.notify()
+    db.refresh(task)
     return task
 
 
@@ -91,6 +94,7 @@ def delete_task(db: Session, task_id: int) -> None:
     task = get_task(db, task_id)
     # Se captura antes de borrar: n8n lo necesita para eliminar el evento externo.
     data = {"task_id": task.id, "external_event_id": task.external_event_id}
+    events.record(db, "task.deleted", data)
     db.delete(task)
-    db.commit()
-    events.publish("task.deleted", data)
+    db.commit()  # borrado y evento se confirman juntos
+    events.notify()
