@@ -75,6 +75,7 @@ Cada evento llega con esta forma:
 {
   "event": "task.created",
   "event_id": "uuid",
+  "sequence": 42,
   "occurred_at": "2026-10-14T17:42:02+00:00",
   "data": { "task_id": 12 }
 }
@@ -88,6 +89,12 @@ El envío es en segundo plano: si n8n no responde, la API no se ve afectada.
 | `task.completed` | Al pasar a `done` (no se emite además `task.updated`) |
 | `task.updated` | Cuando cambian otros datos; `data.changed` lista los campos |
 | `task.deleted` | Al eliminar; incluye `external_event_id` para borrar el evento de Calendar |
+
+`occurred_at` y `sequence` se fijan **cuando ocurre el cambio**, y los eventos salen en ese
+mismo orden (cola con un único hilo de envío). Aun así, con varias instancias de la API o
+reintentos pueden llegar desordenados: **los flujos de n8n deben consultar
+`GET /api/tasks/{id}` para conocer el estado actual** en lugar de fiarse solo del evento, y
+descartar `event_id` ya procesados.
 
 Un `PATCH` que no cambia nada, o que solo guarda `external_event_id` / `reminded_at`
 (campos que escriben las automatizaciones), no emite eventos, para evitar bucles.

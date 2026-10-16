@@ -7,6 +7,7 @@ from . import models  # noqa: F401  (registra las tablas en Base.metadata)
 from .config import settings
 from .database import Base, engine
 from .routers import ai, tasks
+from .services import events
 
 
 @asynccontextmanager
@@ -14,6 +15,7 @@ async def lifespan(_: FastAPI):
     # Desarrollo: crea las tablas si no existen. En producción se usarán migraciones.
     Base.metadata.create_all(engine)
     yield
+    events.drain(timeout=5.0)  # no perder eventos pendientes al apagar
 
 
 app = FastAPI(title="TaskFlow AI", version="0.2.0", lifespan=lifespan)

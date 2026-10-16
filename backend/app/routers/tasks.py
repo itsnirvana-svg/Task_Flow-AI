@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -53,25 +53,18 @@ def get_task(task_id: int, db: Session = Depends(get_db)) -> TaskModel:
 
 
 @router.post("", response_model=TaskRead, status_code=201)
-def create_task(
-    payload: TaskCreate, background: BackgroundTasks, db: Session = Depends(get_db)
-) -> TaskModel:
+def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> TaskModel:
     task = TaskModel(**payload.model_dump())
     _sync_completed_at(task)
     db.add(task)
     db.commit()
     db.refresh(task)
-    background.add_task(events.emit, "task.created", {"task_id": task.id})
+    events.publish("task.created", {"task_id": task.id})
     return task
 
 
 @router.patch("/{task_id}", response_model=TaskRead)
-def update_task(
-    task_id: int,
-    payload: TaskUpdate,
-    background: BackgroundTasks,
-    db: Session = Depends(get_db),
-) -> TaskModel:
+def update_task(task_id: int, payload: TaskUpdate, db: Session = Depends(get_db)) -> TaskModel:
     task = _get_or_404(db, task_id)
 
     requested = {
@@ -92,18 +85,17 @@ def update_task(
 
     # Completar emite solo task.completed; el resto de cambios, task.updated.
     if task.status == TaskStatus.DONE and not was_done:
-        background.add_task(events.emit, "task.completed", {"task_id": task.id})
+        events.publish("task.completed", {"task_id": task.id})
     elif set(changed) - INTERNAL_FIELDS:
-        data = {"task_id": task.id, "changed": sorted(changed)}
-        background.add_task(events.emit, "task.updated", data)
+        events.publish("task.updated", {"task_id": task.id, "changed": sorted(changed)})
     return task
 
 
 @router.delete("/{task_id}", status_code=204)
-def delete_task(task_id: int, background: BackgroundTasks, db: Session = Depends(get_db)) -> None:
+def delete_task(task_id: int, db: Session = Depends(get_db)) -> None:
     task = _get_or_404(db, task_id)
     # Se captura antes de borrar: n8n lo necesita para eliminar el evento externo.
     data = {"task_id": task.id, "external_event_id": task.external_event_id}
     db.delete(task)
     db.commit()
-    background.add_task(events.emit, "task.deleted", data)
+    events.publish("task.deleted", data)
