@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
-from app.config import settings
+from app.config import ENV_FILE, settings
+from app.constants import DESCRIPTION_MAX, TaskStatus
 from app.routers import ai
 from app.services import events
 
@@ -9,6 +10,15 @@ def crear(client, **campos):
     respuesta = client.post("/api/tasks", json={"title": "Tarea", **campos})
     assert respuesta.status_code == 201, respuesta.text
     return respuesta.json()
+
+
+def capturar_eventos(monkeypatch):
+    emitidos = []
+    monkeypatch.setattr(events, "emit", lambda evento, datos: emitidos.append((evento, datos)))
+    return emitidos
+
+
+# ---------------------------------------------------------------- tareas
 
 
 def test_health(client):
@@ -28,6 +38,23 @@ def test_validacion_rechaza_datos_invalidos(client):
     assert client.post("/api/tasks", json={"title": "x", "status": "hecho"}).status_code == 422
 
 
+def test_titulo_solo_con_espacios_se_rechaza(client):  # A2
+    assert client.post("/api/tasks", json={"title": "     "}).status_code == 422
+    tarea = crear(client)
+    assert client.patch(f"/api/tasks/{tarea['id']}", json={"title": "   "}).status_code == 422
+
+
+def test_titulo_se_guarda_sin_espacios_sobrantes(client):  # A2
+    assert crear(client, title="  Informe semanal  ")["title"] == "Informe semanal"
+
+
+def test_descripcion_tiene_limite(client):  # M2
+    assert crear(client, description="a" * DESCRIPTION_MAX)["description"]
+    demasiado_larga = "a" * (DESCRIPTION_MAX + 1)
+    respuesta = client.post("/api/tasks", json={"title": "x", "description": demasiado_larga})
+    assert respuesta.status_code == 422
+
+
 def test_completar_y_reabrir_mantiene_completed_at(client):
     tarea = crear(client)
 
@@ -43,6 +70,12 @@ def test_crear_ya_completada_rellena_completed_at(client):
     assert crear(client, status="done")["completed_at"] is not None
 
 
+def test_fechas_incluyen_zona_horaria_utc(client):  # M1
+    tarea = crear(client, status="done")
+    for campo in ("created_at", "updated_at", "completed_at"):
+        assert tarea[campo].endswith("Z"), f"{campo} sin zona horaria: {tarea[campo]}"
+
+
 def test_listado_filtra_y_pagina(client):
     for i in range(5):
         crear(client, title=f"T{i}", status="done" if i < 2 else "todo")
@@ -53,6 +86,17 @@ def test_listado_filtra_y_pagina(client):
     assert client.get("/api/tasks", params={"limit": 0}).status_code == 422
 
 
+def test_filtro_de_estado_invalido_devuelve_422(client):  # M4
+    assert client.get("/api/tasks", params={"status": "hecho"}).status_code == 422
+
+
+def test_estados_del_enum_son_los_de_la_base_de_datos():  # M4
+    assert {s.value for s in TaskStatus} == {"todo", "in_progress", "done"}
+    esquema = (ENV_FILE.parent / "backend" / "db" / "schema.sql").read_text(encoding="utf-8")
+    for estado in TaskStatus:
+        assert f"'{estado.value}'" in esquema
+
+
 def test_eliminar_y_404(client):
     tarea = crear(client)
     assert client.delete(f"/api/tasks/{tarea['id']}").status_code == 204
@@ -61,17 +105,73 @@ def test_eliminar_y_404(client):
     assert client.delete(f"/api/tasks/{tarea['id']}").status_code == 404
 
 
-def test_eventos_se_emiten_en_cada_cambio(client, monkeypatch):
-    emitidos = []
-    monkeypatch.setattr(events, "emit", lambda evento, datos: emitidos.append((evento, datos)))
+# ---------------------------------------------------- campos de automatización (A1)
+
+
+def test_automatizaciones_pueden_guardar_el_id_del_evento(client):  # A1
+    tarea = crear(client)
+    ahora = "2026-10-16T08:00:00Z"
+
+    respuesta = client.patch(
+        f"/api/tasks/{tarea['id']}", json={"external_event_id": "evt_abc", "reminded_at": ahora}
+    )
+
+    assert respuesta.status_code == 200
+    assert respuesta.json()["external_event_id"] == "evt_abc"
+    assert respuesta.json()["reminded_at"].startswith("2026-10-16T08:00:00")
+    leida = client.get(f"/api/tasks/{tarea['id']}").json()
+    assert leida["external_event_id"] == "evt_abc"
+
+
+def test_se_puede_limpiar_el_id_del_evento(client):  # A1
+    tarea = crear(client)
+    client.patch(f"/api/tasks/{tarea['id']}", json={"external_event_id": "evt_abc"})
+    limpia = client.patch(f"/api/tasks/{tarea['id']}", json={"external_event_id": None})
+    assert limpia.json()["external_event_id"] is None
+
+
+# ---------------------------------------------------------------- eventos
+
+
+def test_eventos_del_ciclo_de_vida(client, monkeypatch):  # M3
+    emitidos = capturar_eventos(monkeypatch)
 
     tarea = crear(client)
     client.patch(f"/api/tasks/{tarea['id']}", json={"status": "done"})
     client.delete(f"/api/tasks/{tarea['id']}")
 
-    nombres = [e for e, _ in emitidos]
-    assert nombres == ["task.created", "task.updated", "task.completed", "task.deleted"]
-    assert emitidos[-1][1]["task_id"] == tarea["id"]
+    assert [e for e, _ in emitidos] == ["task.created", "task.completed", "task.deleted"]
+    assert emitidos[-1][1] == {"task_id": tarea["id"], "external_event_id": None}
+
+
+def test_cambio_de_datos_emite_task_updated_con_los_campos(client, monkeypatch):  # M3
+    tarea = crear(client)
+    emitidos = capturar_eventos(monkeypatch)
+
+    client.patch(f"/api/tasks/{tarea['id']}", json={"title": "Nuevo", "priority": 4})
+
+    esperado = {"task_id": tarea["id"], "changed": ["priority", "title"]}
+    assert emitidos == [("task.updated", esperado)]
+
+
+def test_patch_sin_cambios_no_emite_eventos(client, monkeypatch):  # M3
+    tarea = crear(client, title="Igual")
+    emitidos = capturar_eventos(monkeypatch)
+
+    client.patch(f"/api/tasks/{tarea['id']}", json={})
+    client.patch(f"/api/tasks/{tarea['id']}", json={"title": "Igual", "status": "todo"})
+    client.patch(f"/api/tasks/{tarea['id']}", json={"title": None})  # null ignorado
+
+    assert emitidos == []
+
+
+def test_guardar_campos_internos_no_dispara_eventos(client, monkeypatch):  # M3 + A1
+    tarea = crear(client)
+    emitidos = capturar_eventos(monkeypatch)
+
+    client.patch(f"/api/tasks/{tarea['id']}", json={"external_event_id": "evt_1"})
+
+    assert emitidos == []  # evita el bucle: n8n guarda el id y se vuelve a disparar
 
 
 def test_emit_no_hace_nada_sin_url(monkeypatch):
@@ -98,6 +198,22 @@ def test_emit_envia_secreto_y_tolera_fallos(monkeypatch):
     assert enviados["json"]["event_id"]
 
 
+# ---------------------------------------------------------------- IA
+
+
+def cliente_ia(contenido=None, error=None):
+    class Falso:
+        class messages:
+            @staticmethod
+            def create(**kwargs):
+                if error:
+                    raise error
+                Falso.prompt = kwargs["messages"][0]["content"]
+                return SimpleNamespace(content=contenido)
+
+    return Falso
+
+
 def test_ia_sin_clave_devuelve_503(client, monkeypatch):
     monkeypatch.setattr(settings, "anthropic_api_key", "")
     assert client.post("/api/ai/prioritize").status_code == 503
@@ -106,35 +222,47 @@ def test_ia_sin_clave_devuelve_503(client, monkeypatch):
 def test_ia_usa_solo_tareas_pendientes(client, monkeypatch):
     crear(client, title="Pendiente A", priority=3)
     crear(client, title="Ya hecha", status="done")
-    prompts = []
-
-    class ClienteFalso:
-        class messages:
-            @staticmethod
-            def create(**kwargs):
-                prompts.append(kwargs["messages"][0]["content"])
-                return SimpleNamespace(content=[SimpleNamespace(text="1. Pendiente A")])
-
+    falso = cliente_ia([SimpleNamespace(text="1. Pendiente A")])
     monkeypatch.setattr(settings, "anthropic_api_key", "clave-de-prueba")
-    monkeypatch.setattr(ai, "get_client", lambda: ClienteFalso)
+    monkeypatch.setattr(ai, "get_client", lambda: falso)
 
     respuesta = client.post("/api/ai/prioritize")
+
     assert respuesta.status_code == 200
     assert respuesta.json()["suggestion"] == "1. Pendiente A"
-    assert "Pendiente A" in prompts[0]
-    assert "Ya hecha" not in prompts[0]
+    assert "Pendiente A" in falso.prompt
+    assert "Ya hecha" not in falso.prompt
+
+
+def test_ia_une_varios_bloques_de_texto(client, monkeypatch):
+    crear(client)
+    falso = cliente_ia([SimpleNamespace(text="Parte 1. "), SimpleNamespace(text="Parte 2.")])
+    monkeypatch.setattr(settings, "anthropic_api_key", "clave-de-prueba")
+    monkeypatch.setattr(ai, "get_client", lambda: falso)
+
+    assert client.post("/api/ai/prioritize").json()["suggestion"] == "Parte 1. Parte 2."
+
+
+def test_ia_respuesta_vacia_devuelve_502_y_no_500(client, monkeypatch):  # A3
+    crear(client)
+    monkeypatch.setattr(settings, "anthropic_api_key", "clave-de-prueba")
+    monkeypatch.setattr(ai, "get_client", lambda: cliente_ia([]))
+
+    assert client.post("/api/ai/prioritize").status_code == 502
 
 
 def test_ia_error_externo_devuelve_502(client, monkeypatch):
     crear(client, title="Algo")
-
-    class ClienteRoto:
-        class messages:
-            @staticmethod
-            def create(**kwargs):
-                raise RuntimeError("timeout")
-
     monkeypatch.setattr(settings, "anthropic_api_key", "clave-de-prueba")
-    monkeypatch.setattr(ai, "get_client", lambda: ClienteRoto)
+    monkeypatch.setattr(ai, "get_client", lambda: cliente_ia(error=RuntimeError("timeout")))
 
     assert client.post("/api/ai/prioritize").status_code == 502
+
+
+# ---------------------------------------------------------------- configuración
+
+
+def test_el_env_se_busca_en_la_raiz_del_proyecto_sin_depender_del_cwd():  # M5
+    assert ENV_FILE.is_absolute()
+    assert ENV_FILE.name == ".env"
+    assert (ENV_FILE.parent / "backend" / "app").is_dir()

@@ -82,6 +82,16 @@ Cada evento llega con esta forma:
 
 El envío es en segundo plano: si n8n no responde, la API no se ve afectada.
 
+| Evento | Cuándo se emite |
+|---|---|
+| `task.created` | Al crear una tarea |
+| `task.completed` | Al pasar a `done` (no se emite además `task.updated`) |
+| `task.updated` | Cuando cambian otros datos; `data.changed` lista los campos |
+| `task.deleted` | Al eliminar; incluye `external_event_id` para borrar el evento de Calendar |
+
+Un `PATCH` que no cambia nada, o que solo guarda `external_event_id` / `reminded_at`
+(campos que escriben las automatizaciones), no emite eventos, para evitar bucles.
+
 ## Estructura
 
 ```text

@@ -1,8 +1,14 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# El .env vive en la raíz del proyecto; la ruta es absoluta para no depender
+# del directorio desde el que se arranque la aplicación.
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file="../.env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 
     # Base de datos: SQLite en desarrollo; PostgreSQL con
     # DATABASE_URL=postgresql+psycopg://usuario:clave@localhost:5432/taskflow

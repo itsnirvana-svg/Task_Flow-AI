@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..constants import TaskStatus
 from ..database import get_db
 from ..models import TaskModel
 from ..schemas import PrioritizeResponse
@@ -28,7 +29,7 @@ def prioritize(db: Session = Depends(get_db)) -> PrioritizeResponse:
     pending = list(
         db.scalars(
             select(TaskModel)
-            .where(TaskModel.status != "done")
+            .where(TaskModel.status != TaskStatus.DONE.value)
             .order_by(TaskModel.priority.desc(), TaskModel.due_date)
             .limit(50)
         )
@@ -56,4 +57,8 @@ def prioritize(db: Session = Depends(get_db)) -> PrioritizeResponse:
     except Exception as exc:  # error de red, cuota o clave inválida
         raise HTTPException(status_code=502, detail="El servicio de IA no respondió") from exc
 
-    return PrioritizeResponse(suggestion=message.content[0].text)
+    # La respuesta es una lista de bloques; se unen los de texto y se tolera una lista vacía.
+    suggestion = "".join(getattr(block, "text", "") for block in message.content).strip()
+    if not suggestion:
+        raise HTTPException(status_code=502, detail="La IA devolvió una respuesta vacía")
+    return PrioritizeResponse(suggestion=suggestion)
