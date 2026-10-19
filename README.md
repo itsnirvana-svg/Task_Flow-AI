@@ -90,14 +90,42 @@ atiende una petición después de pulsar *Listen for test event*.
 
 El código fuente de `taskflow-web` se mantiene legible (11 scripts, CSS con variables). Para publicar,
 `tools/build_web.py` genera `taskflow-web/dist/` con los scripts unidos y minificados, el CSS
-minificado y nombres con resumen del contenido (`app.<hash>.js`), de modo que el navegador los
-guarda en caché y solo los vuelve a descargar si cambian: **de 13 peticiones a 3 y ~36 % menos
+minificado y nombres con resumen del contenido (`assets/app.<hash>.js`), de modo que el navegador
+los guarda en caché y solo los vuelve a descargar si cambian: **de 13 peticiones a 3 y ~36 % menos
 bytes comprimidos**.
 
 ```bash
 pip install -r tools/requirements.txt
 python tools/build_web.py
 ```
+
+## Despliegue en Vercel (solo la interfaz)
+
+La interfaz (`taskflow-web`) es un sitio estático y se publica en Vercel tal cual. `vercel.json` ya
+define todo lo necesario:
+
+| Ajuste | Valor |
+|---|---|
+| Framework | Ninguno (sitio estático) |
+| Comando de construcción | `python3 tools/build_web.py` (Vercel incluye Python 3.12) |
+| Instalación | `pip install -r tools/requirements.txt`; si falla, construye igualmente sin minificar |
+| Carpeta de salida | `taskflow-web/dist` |
+| Cabeceras | CSP estricta (`script-src 'self'`, `style-src 'self'`, sin marcos), `nosniff`, `Referrer-Policy`, `Permissions-Policy` |
+| Caché | `assets/*` (nombres con resumen del contenido) con `immutable` y un año |
+
+Pasos: importa el repositorio en Vercel, deja el directorio raíz en `/` (sin cambiar el *Framework
+Preset* ni los comandos: salen de `vercel.json`) y despliega. No hace falta ninguna variable de entorno.
+
+**Cuando la interfaz llame a la API**, hay que tocar dos sitios o el navegador bloqueará las peticiones:
+
+1. En `vercel.json`, añadir el dominio de la API a `connect-src` de la política CSP
+   (por ejemplo `connect-src 'self' https://api.tu-empresa.com`).
+2. En la API, definir `CORS_ORIGINS` con el dominio de Vercel (`https://tu-proyecto.vercel.app`).
+
+**La API y n8n no se publican en Vercel.** Las funciones de Vercel se congelan al responder, así que
+el despachador de eventos (un hilo en segundo plano) no es fiable allí; SQLite no persiste; y n8n es un
+proceso permanente. Usa un servicio de procesos de larga duración (Render, Railway, Fly.io o un
+servidor propio) con PostgreSQL.
 
 ### Conectar con n8n
 

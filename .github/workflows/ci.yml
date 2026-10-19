@@ -34,7 +34,7 @@ jobs:
       - run: pip install -r tools/requirements.txt
       - run: python tools/build_web.py
       - name: Comprobar la sintaxis del JavaScript generado
-        run: node --check taskflow-web/dist/app.*.js
+        run: node --check taskflow-web/dist/assets/app.*.js
 
   sql:
     name: Sintaxis de los scripts SQL

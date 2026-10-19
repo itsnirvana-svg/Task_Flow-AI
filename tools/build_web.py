@@ -1,14 +1,14 @@
 """Genera la versión de producción de la interfaz en taskflow-web/dist/.
 
 Qué hace:
-- Une los 11 scripts de index.html en UN solo archivo y lo minifica (rjsmin).
+- Une los scripts de index.html en UN solo archivo y lo minifica (rjsmin).
 - Minifica el CSS (rcssmin).
 - Quita comentarios y espacios sobrantes del HTML.
-- Añade al nombre de los archivos un resumen de su contenido (app.<hash>.js): el navegador
-  puede guardarlos en caché por mucho tiempo y los descarga de nuevo solo si cambian.
+- Guarda JS y CSS en dist/assets/ con un resumen del contenido en el nombre
+  (assets/app.<hash>.js): se pueden cachear "para siempre" y se descargan de nuevo solo si cambian.
 
-Resultado: de 13 peticiones a 3. El código fuente (taskflow-web/js y css) no se modifica;
-dist/ se genera y no se versiona.
+Es el comando de construcción de Vercel (ver vercel.json). Si los minificadores no están
+instalados, genera igualmente el paquete sin minificar: el despliegue no falla por eso.
 
 Uso (desde la raíz del proyecto):
     pip install -r tools/requirements.txt
@@ -22,15 +22,41 @@ import shutil
 import sys
 from pathlib import Path
 
-import rcssmin
-import rjsmin
+try:
+    import rcssmin
+    import rjsmin
+except ImportError:  # sin minificadores se genera el paquete igual, solo que sin reducirlo
+    rcssmin = rjsmin = None
 
 WEB = Path(__file__).resolve().parent.parent / "taskflow-web"
 DIST = WEB / "dist"
+ASSETS = "assets"
 
 SCRIPT_TAG = re.compile(r'[ \t]*<script src="(js/[^"]+)"></script>\n?')
 CSS_LINK = re.compile(r'<link rel="stylesheet" href="(css/[^"]+)" />')
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+
+
+def read_source(relative: str) -> str:
+    """Lee un archivo comprobando que existe con las mayúsculas EXACTAS.
+
+    Windows no distingue mayúsculas de minúsculas y Linux (donde construye Vercel) sí: un
+    `js/Store.js` que funciona en tu equipo daría error al desplegar.
+    """
+    folder = WEB
+    for part in Path(relative).parts:
+        if part not in {entry.name for entry in folder.iterdir()}:
+            sys.exit(f"{relative}: no existe con esa capitalización exacta (en Linux importa)")
+        folder = folder / part
+    return (WEB / relative).read_text(encoding="utf-8")
+
+
+def minify_js(text: str) -> str:
+    return rjsmin.jsmin(text) if rjsmin else text
+
+
+def minify_css(text: str) -> str:
+    return rcssmin.cssmin(text) if rcssmin else text
 
 
 def short_hash(text: str) -> str:
@@ -56,10 +82,10 @@ def build() -> None:
         sys.exit("No se encontraron los <script> o la hoja de estilos esperados en index.html")
 
     # Los scripts se concatenan en el orden en que los carga index.html.
-    js = ";\n".join(rjsmin.jsmin((WEB / p).read_text(encoding="utf-8")) for p in script_paths)
-    css = rcssmin.cssmin((WEB / css_paths[0]).read_text(encoding="utf-8"))
-    js_name = f"app.{short_hash(js)}.js"
-    css_name = f"styles.{short_hash(css)}.css"
+    js = ";\n".join(minify_js(read_source(p)) for p in script_paths)
+    css = minify_css(read_source(css_paths[0]))
+    js_name = f"{ASSETS}/app.{short_hash(js)}.js"
+    css_name = f"{ASSETS}/styles.{short_hash(css)}.css"
 
     html = CSS_LINK.sub(f'<link rel="stylesheet" href="{css_name}" />', source_html)
     # El primer <script> se sustituye por el paquete; los demás se eliminan.
@@ -69,13 +95,12 @@ def build() -> None:
 
     if DIST.exists():
         shutil.rmtree(DIST)
-    DIST.mkdir()
+    (DIST / ASSETS).mkdir(parents=True)
     (DIST / js_name).write_text(js, encoding="utf-8")
     (DIST / css_name).write_text(css, encoding="utf-8")
     (DIST / "index.html").write_text(html, encoding="utf-8")
 
-    names = (js_name, css_name)
-    report(source_html, script_paths, css_paths[0], (js, css, html), names)
+    report(source_html, script_paths, css_paths[0], (js, css, html), (js_name, css_name))
 
 
 def report(source_html, script_paths, css_path, built_texts, names) -> None:
@@ -99,6 +124,8 @@ def report(source_html, script_paths, css_path, built_texts, names) -> None:
     print(f"{'TOTAL':6}{totals[0]:>10}{totals[1]:>10}{totals[2]:>12}{totals[3]:>14}  (bytes)")
     antes = len(script_paths) + 2  # los scripts, la hoja de estilos y el HTML
     print(f"Peticiones al cargar: {antes} -> 3  ({js_name}, {css_name}, index.html)")
+    if not (rjsmin and rcssmin):
+        print("AVISO: rjsmin/rcssmin no están instalados; el paquete se generó SIN minificar.")
 
 
 if __name__ == "__main__":
