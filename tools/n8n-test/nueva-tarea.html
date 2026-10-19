@@ -31,8 +31,11 @@
     </select>
 
     <label for="url">URL del webhook</label>
-    <input id="url" type="url" value="http://localhost:5678/webhook-test/nueva-tarea" />
-    <small>Usa <code>/webhook-test/</code> mientras pruebas y <code>/webhook/</code> con el flujo activado.</small>
+    <input id="url" type="url" placeholder="http://localhost:5678/webhook/…" />
+    <small>
+      Sin dirección fija: se recuerda la última usada o se toma de <code>?url=…</code>.
+      Usa <code>/webhook/</code> (flujo activado); <code>/webhook-test/</code> solo atiende una petición.
+    </small>
 
     <button type="submit" id="enviar">Enviar</button>
   </form>
@@ -43,6 +46,13 @@
     const form = document.getElementById("formulario");
     const boton = document.getElementById("enviar");
     const resultado = document.getElementById("resultado");
+    const campoUrl = document.getElementById("url");
+
+    // No hay una dirección escrita en el código: viene de ?url=…, de la última usada, o queda vacía.
+    function recordada() {
+      try { return localStorage.getItem("webhookUrl") || ""; } catch { return ""; }
+    }
+    campoUrl.value = new URLSearchParams(location.search).get("url") || recordada();
 
     function mostrar(texto, clase) {
       resultado.textContent = texto;
@@ -54,7 +64,12 @@
       e.preventDefault();
       const titulo = document.getElementById("titulo").value.trim();
       const prioridad = document.getElementById("prioridad").value;
-      const url = document.getElementById("url").value;
+      const url = campoUrl.value.trim();
+      if (!url) {
+        mostrar("Indica la dirección del webhook de n8n.", "error");
+        return;
+      }
+      try { localStorage.setItem("webhookUrl", url); } catch { /* sin almacenamiento: no pasa nada */ }
 
       boton.disabled = true;
       resultado.style.display = "none";
@@ -70,7 +85,7 @@
           mostrar(`n8n respondió ${res.status}\n${texto}`, "error");
         } else {
           mostrar(`Enviado correctamente (${res.status})\n${texto}`, "ok");
-          form.reset();
+          document.getElementById("titulo").value = "";  // la dirección del webhook se conserva
         }
       } catch (err) {
         mostrar(

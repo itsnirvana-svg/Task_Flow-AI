@@ -30,7 +30,7 @@ app = FastAPI(title="TaskFlow AI", version="0.2.0", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)  # listados grandes: menos bytes
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
+    allow_origins=settings.cors_origin_list,
     allow_methods=["*"],
     allow_headers=["*"],
 )

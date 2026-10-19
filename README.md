@@ -30,7 +30,7 @@ ocurre (tarea creada, completada, eliminada).
 |---|---|
 | Interfaz | HTML5, CSS3 y JavaScript (`taskflow-web`) |
 | API | Python 3.10+ y FastAPI |
-| Datos | SQLAlchemy 2; SQLite (desarrollo) / PostgreSQL |
+| Datos | SQLAlchemy 2; SQLite (desarrollo) / PostgreSQL con `psycopg` (producción) |
 | IA | API de Anthropic (Claude) |
 | Automatización | n8n (webhooks) |
 | Calidad | pytest, ruff, GitHub Actions |
@@ -66,6 +66,25 @@ ruff check backend/app backend/tests .claude tools
 ```
 
 Dashboard: abre `taskflow-web/index.html` en el navegador.
+
+## Configuración
+
+Toda la configuración se lee de variables de entorno o del archivo `.env` (plantilla completa y
+comentada en `.env.example`). Hay dos perfiles, que se eligen con `APP_ENV`:
+
+| Variable | Desarrollo (por defecto) | Producción (`APP_ENV=production`) |
+|---|---|---|
+| `DATABASE_URL` | SQLite local (`sqlite:///./taskflow.db`) | PostgreSQL (`postgres://` y `postgresql://` se aceptan) |
+| `CORS_ORIGINS` | `http://localhost:5500` | Los dominios reales, solo con `https://` |
+| `N8N_WEBHOOK_URL` | Vacío (no se envían eventos) | Opcional; si se define: `https://…/webhook/…`, no local ni `/webhook-test/` |
+| `N8N_WEBHOOK_SECRET` | Vacío | Obligatorio si hay `N8N_WEBHOOK_URL` |
+| `ANTHROPIC_API_KEY` | Vacía (la IA responde 503) | La clave real |
+
+**En producción la aplicación no arranca si alguna conexión apunta a un entorno de desarrollo o de
+prueba** (SQLite, `localhost`, `/webhook-test/`, direcciones sin `https`, secreto ausente) y el
+mensaje de error indica qué corregir. La ruta del webhook debe coincidir con el *Path* del nodo
+Webhook de n8n y ser la de producción (`/webhook/...`): la de pruebas (`/webhook-test/...`) solo
+atiende una petición después de pulsar *Listen for test event*.
 
 ### Versión de producción de la interfaz
 
