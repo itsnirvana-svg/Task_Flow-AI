@@ -70,6 +70,57 @@ def test_el_html_fuente_no_usa_estilos_ni_manejadores_en_linea():
     assert not re.search(r"<script(?![^>]*\ssrc=)[^>]*>", html)  # ningún script en línea
 
 
+# ---------------------------------------------------------------- menú y vistas
+
+
+def contenido(nombre: str) -> str:
+    return (RAIZ / "taskflow-web" / nombre).read_text(encoding="utf-8")
+
+
+def test_cada_enlace_del_menu_tiene_su_vista_y_su_ruta():
+    """Evita que un enlace del menú vuelva a quedar decorativo (href="#")."""
+    html = contenido("index.html")
+    enlaces = re.findall(r'<a href="(#/[^"]+)" class="nav-link[^"]*" data-nav="(\w+)"', html)
+    assert len(enlaces) == 5
+    codigo_del_router = contenido("js/router.js").split("const ROUTES")[1]
+    rutas = set(re.findall(r'^\s+(\w+): "', codigo_del_router, re.M))
+    vistas = set(re.findall(r'data-view="(\w+)"', html))
+    for href, nombre in enlaces:
+        assert href == f"#/{nombre}"
+        assert nombre in vistas, f"el enlace '{nombre}' no tiene su sección data-view"
+        assert nombre in rutas, f"el enlace '{nombre}' no está en las rutas de router.js"
+    assert 'href="#"' not in html
+
+
+def test_las_vistas_nuevas_estan_cargadas_en_el_orden_correcto():
+    html = contenido("index.html")
+    orden = re.findall(r'<script src="(js/[^"]+)"', html)
+    for archivo in ("js/router.js", "js/components/task-list.js", "js/components/calendar-view.js"):
+        assert archivo in orden
+    # El arranque va el último; las utilidades se cargan antes que los componentes que las usan.
+    assert orden[-1] == "js/app.js"
+    assert orden.index("js/lib/dom.js") < orden.index("js/components/task-list.js")
+    assert orden.index("js/lib/settings.js") < orden.index("js/components/settings-view.js")
+    assert orden.index("js/store.js") < orden.index("js/router.js") < orden.index("js/app.js")
+
+
+def test_el_codigo_de_las_vistas_no_usa_html_en_cadenas_ni_estilos_en_linea():
+    """La política CSP y la seguridad (XSS) exigen crear el DOM con h() y textContent."""
+    for archivo in (RAIZ / "taskflow-web" / "js").rglob("*.js"):
+        texto = archivo.read_text(encoding="utf-8")
+        assert "innerHTML" not in texto, f"{archivo.name} usa innerHTML"
+        assert "insertAdjacentHTML" not in texto, f"{archivo.name} usa insertAdjacentHTML"
+        assert not re.search(r"\.style\.\w+\s*=", texto), f"{archivo.name} asigna estilos en línea"
+        assert "eval(" not in texto
+
+
+def test_la_pagina_no_tiene_enlaces_vacios_ni_peticiones_a_otros_dominios():
+    html = contenido("index.html")
+    assert not re.search(r'href="#"', html)
+    externos = re.findall(r'(?:src|href)="(https?://[^"]+)"', html)
+    assert externos == [], f"recursos externos (la CSP solo permite 'self'): {externos}"
+
+
 # ---------------------------------------------------------------- construcción
 
 

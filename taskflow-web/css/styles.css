@@ -20,6 +20,7 @@
   --color-primary-dark: #4338ca;
   --color-primary-soft: #eef0ff;
   --color-primary-light: #a5b4fc;
+  --color-primary-text: #4f46e5; /* texto de marca sobre fondos suaves (en oscuro, más claro) */
   --ring: rgba(79, 70, 229, 0.15);
   --ring-strong: rgba(79, 70, 229, 0.45);
 
@@ -54,10 +55,30 @@
   --font: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+/* ---------- Tema oscuro ----------
+   Solo redefine las variables; el atributo data-theme lo pone js/lib/settings.js. */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #0e1320;
+  --color-surface: #161c2c;
+  --color-surface-alt: #1b2236;
+  --color-border: #2a3349;
+  --color-text: #e8ebf4;
+  --color-muted: #9aa5bd;
+  --color-primary-soft: #262d5a;
+  --color-primary-text: #a5b4fc;
+  --color-sidebar: #0a0e19;
+  --color-scrim: rgba(0, 0, 0, 0.6);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
 /* ---------- Base ---------- */
 *,
 *::before,
 *::after { box-sizing: border-box; }
+
+/* El atributo hidden debe ganar a cualquier display definido en una clase. */
+[hidden] { display: none !important; }
 
 html { -webkit-text-size-adjust: 100%; }
 
@@ -252,7 +273,7 @@ a { color: inherit; text-decoration: none; }
   height: 38px;
   border-radius: 50%;
   background: var(--color-primary-soft);
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   font-weight: 700;
   font-size: 0.85rem;
 }
@@ -352,7 +373,7 @@ a { color: inherit; text-decoration: none; }
 .chip.is-active {
   background: var(--color-primary-soft);
   border-color: var(--color-primary);
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   font-weight: 600;
 }
 
@@ -398,10 +419,158 @@ a { color: inherit; text-decoration: none; }
 
 .badge-alta { --badge-bg: var(--color-danger-soft); --badge-fg: var(--color-danger-text); }
 .badge-baja { --badge-bg: var(--color-neutral-soft); --badge-fg: var(--color-neutral-text); }
+/* (las tareas del calendario reutilizan estos pares de colores) */
 .badge-media,
 .badge-pendiente { --badge-bg: var(--color-pending-soft); --badge-fg: var(--color-pending-text); }
 .badge-en-progreso { --badge-bg: var(--color-progress-soft); --badge-fg: var(--color-progress-text); }
 .badge-completada { --badge-bg: var(--color-done-soft); --badge-fg: var(--color-done-text); }
+
+/* ---------- Vistas del menú: Tareas ---------- */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.control { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--color-muted); }
+
+.control select,
+.cell-select,
+.setting input[type="text"],
+.setting select {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.control select:focus,
+.cell-select:focus,
+.setting input:focus,
+.setting select:focus {
+  outline: 0;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.table-wide { min-width: 820px; }
+.table td.actions { white-space: nowrap; }
+
+.btn-sm { padding: 6px 10px; font-size: 0.85rem; }
+
+.btn-danger { background: transparent; border-color: var(--color-danger); color: var(--color-danger); }
+.btn-danger:hover,
+.btn-danger.is-armed { background: var(--color-danger); color: var(--color-on-primary); }
+
+/* ---------- Vistas del menú: Proyectos ---------- */
+.projects { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+
+.project-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow);
+}
+
+.project-card h3 { font-size: 1.05rem; }
+.project-card progress { width: 100%; height: 10px; accent-color: var(--color-done); }
+.project-card .btn { align-self: flex-start; margin-top: auto; }
+.project-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ---------- Vistas del menú: Calendario ---------- */
+.cal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 14px; }
+.cal-title { min-width: 170px; font-size: 1.1rem; font-weight: 600; text-align: center; }
+.cal-title::first-letter { text-transform: uppercase; } /* "octubre de 2026" -> "Octubre de 2026" */
+
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  margin-bottom: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--color-surface);
+  box-shadow: var(--shadow);
+}
+
+.cal-weekday {
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.cal-day {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 98px;
+  padding: 6px;
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cal-day:nth-child(7n) { border-right: 0; }
+.cal-day.is-outside { background: var(--color-surface-alt); color: var(--color-muted); }
+
+.cal-add {
+  align-self: flex-start;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-weight: 600;
+}
+
+.cal-add:hover { background: var(--color-primary-soft); }
+.is-today .cal-add { background: var(--color-primary); color: var(--color-on-primary); }
+
+.cal-task {
+  display: block;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+  font-size: 0.78rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-task.is-done { opacity: 0.65; text-decoration: line-through; }
+.cal-task.is-late { box-shadow: inset 3px 0 0 var(--color-danger); }
+.cal-more { color: var(--color-muted); font-size: 0.75rem; }
+
+.undated { padding: 16px 20px; }
+.undated h3 { margin-bottom: 10px; font-size: 1rem; }
+.undated-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.undated-list .cal-task { max-width: 260px; }
+
+/* ---------- Vistas del menú: Configuración ---------- */
+.settings { display: grid; gap: 20px; max-width: 560px; padding: 22px; }
+.setting { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.setting label,
+.setting-title { font-weight: 600; font-size: 0.9rem; }
+.setting input[type="text"],
+.setting select { width: 100%; max-width: 360px; padding: 8px 12px; }
+.setting-check { flex-direction: row; align-items: center; gap: 10px; }
+.setting-check input { width: 18px; height: 18px; accent-color: var(--color-primary); }
 
 /* ---------- Diálogo ---------- */
 .dialog {
@@ -456,6 +625,8 @@ a { color: inherit; text-decoration: none; }
 }
 
 @media (max-width: 600px) {
+  .cal-day { min-height: 60px; padding: 4px; }
+  .cal-task { padding: 1px 4px; font-size: 0.7rem; }
   .user-name,
   .topbar-title { display: none; }
   .page-head { flex-direction: column; align-items: stretch; }

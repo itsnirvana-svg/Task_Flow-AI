@@ -1,10 +1,11 @@
-/* Componente: tabla de tareas. */
+/* Componente: tabla de tareas del dashboard (solo lectura). */
 (function (TF) {
   "use strict";
   const { h } = TF.dom;
-  const { formatDate, isOverdue } = TF.format;
+  const { projectOf, formatDate, isOverdue } = TF.format;
   const { Badge } = TF.components;
 
+  /** Fecha límite; en rojo y con aviso si la tarea está vencida. */
   function dueDate(task) {
     const overdue = isOverdue(task);
     return h("span", {
@@ -19,7 +20,7 @@
       "tr",
       {},
       h("td", {}, h("span", { className: "task-title", text: task.title })),
-      h("td", { text: task.project || "Sin proyecto" }),
+      h("td", { text: projectOf(task) }),
       h("td", {}, Badge("priority", task.priority)),
       h("td", {}, Badge("status", task.status)),
       h("td", {}, dueDate(task))
@@ -33,5 +34,5 @@
     tbody.replaceChildren(fragment);
   }
 
-  TF.components.TaskTable = { render };
+  TF.components.TaskTable = { render, dueDate };
 })((window.TaskFlow = window.TaskFlow || {}));

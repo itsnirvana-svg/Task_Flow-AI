@@ -5,16 +5,21 @@
   /**
    * init({ dialog, form, titleInput, titleError, openButton, cancelButton, onSubmit })
    * onSubmit recibe { title, project, priority, status, due } con valores ya limpios.
+   * open({ due: "2026-10-20", project: "Sitio web" }) abre el diálogo con esos campos rellenos.
    */
   function init({ dialog, form, titleInput, titleError, openButton, cancelButton, onSubmit }) {
-    function open() {
+    function open(defaults = {}) {
       form.reset();
       titleError.hidden = true;
+      for (const [name, value] of Object.entries(defaults)) {
+        const field = form.elements[name];
+        if (field && value) field.value = value;
+      }
       dialog.showModal();
       titleInput.focus();
     }
 
-    openButton.addEventListener("click", open);
+    openButton.addEventListener("click", () => open());
     cancelButton.addEventListener("click", () => dialog.close());
 
     form.addEventListener("submit", (event) => {

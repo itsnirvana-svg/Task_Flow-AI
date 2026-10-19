@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="TaskFlow AI: gestor de tareas. Primera versión del dashboard." />
   <title>TaskFlow AI | Dashboard</title>
+  <!-- Favicon incrustado: evita la petición (y el 404) de /favicon.ico; la CSP permite data: en img-src -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234f46e5'/%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
@@ -33,23 +35,23 @@
       </div>
 
       <nav class="nav">
-        <a href="#" class="nav-link is-active" aria-current="page">
+        <a href="#/dashboard" class="nav-link is-active" data-nav="dashboard" aria-current="page">
           <svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>
           <span>Dashboard</span>
         </a>
-        <a href="#" class="nav-link">
+        <a href="#/tareas" class="nav-link" data-nav="tareas">
           <svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>
           <span>Tareas</span>
         </a>
-        <a href="#" class="nav-link">
+        <a href="#/proyectos" class="nav-link" data-nav="proyectos">
           <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
           <span>Proyectos</span>
         </a>
-        <a href="#" class="nav-link">
+        <a href="#/calendario" class="nav-link" data-nav="calendario">
           <svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg>
           <span>Calendario</span>
         </a>
-        <a href="#" class="nav-link">
+        <a href="#/configuracion" class="nav-link" data-nav="configuracion">
           <svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>
           <span>Configuración</span>
         </a>
@@ -65,7 +67,7 @@
         <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false">
           <svg class="icon icon-lg" aria-hidden="true"><use href="#i-menu"/></svg>
         </button>
-        <h1 class="topbar-title">Dashboard</h1>
+        <h1 class="topbar-title" id="topbarTitle">Dashboard</h1>
 
         <label class="search" for="searchInput">
           <span class="visually-hidden">Buscar tareas</span>
@@ -80,9 +82,9 @@
       </header>
 
       <main class="content">
-        <section class="page-head">
+        <section class="page-head" data-view="dashboard">
           <div>
-            <h2>Resumen general</h2>
+            <h2 tabindex="-1">Resumen general</h2>
             <p class="muted">Estado actual de tus tareas.</p>
           </div>
           <button class="btn btn-primary" id="newTaskBtn" type="button">
@@ -92,7 +94,7 @@
         </section>
 
         <!-- Tarjetas de estadísticas -->
-        <section class="stats" aria-label="Estadísticas de tareas">
+        <section class="stats" data-view="dashboard" aria-label="Estadísticas de tareas">
           <article class="stat-card stat-total">
             <span class="stat-label">Tareas totales</span>
             <strong class="stat-value" id="statTotal">0</strong>
@@ -112,7 +114,7 @@
         </section>
 
         <!-- Tabla de tareas -->
-        <section class="panel" aria-labelledby="tableTitle">
+        <section class="panel" data-view="dashboard" aria-labelledby="tableTitle">
           <div class="panel-head">
             <h3 id="tableTitle">Tareas registradas</h3>
             <div class="filters" role="group" aria-label="Filtrar por estado">
@@ -139,6 +141,12 @@
           </div>
           <p class="empty" id="emptyState" hidden>No hay tareas que coincidan con la búsqueda.</p>
         </section>
+
+        <!-- Vistas del menú: su contenido lo construye cada componente (js/components/*-view.js) -->
+        <section class="view" id="viewTareas" data-view="tareas" hidden></section>
+        <section class="view" id="viewProyectos" data-view="proyectos" hidden></section>
+        <section class="view" id="viewCalendario" data-view="calendario" hidden></section>
+        <section class="view" id="viewConfiguracion" data-view="configuracion" hidden></section>
       </main>
     </div>
   </div>
@@ -195,12 +203,18 @@
   <script src="js/lib/dom.js"></script>
   <script src="js/lib/format.js"></script>
   <script src="js/lib/utils.js"></script>
+  <script src="js/lib/settings.js"></script>
   <script src="js/components/badge.js"></script>
   <script src="js/components/stat-cards.js"></script>
   <script src="js/components/task-table.js"></script>
   <script src="js/components/task-dialog.js"></script>
   <script src="js/components/sidebar.js"></script>
+  <script src="js/components/task-list.js"></script>
+  <script src="js/components/projects-view.js"></script>
+  <script src="js/components/calendar-view.js"></script>
+  <script src="js/components/settings-view.js"></script>
   <script src="js/store.js"></script>
+  <script src="js/router.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
