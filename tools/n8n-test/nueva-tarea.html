@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nueva tarea</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 420px; margin: 2rem auto; padding: 0 1rem; }
+    label { display: block; margin-top: 1rem; font-weight: 600; }
+    input, select, button { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; font-size: 1rem; }
+    button { margin-top: 1.5rem; cursor: pointer; }
+    button:disabled { cursor: wait; opacity: 0.6; }
+    #resultado { margin-top: 1.5rem; padding: 10px; border-radius: 6px; white-space: pre-wrap; display: none; }
+    .ok { background: #e6f4ea; color: #137333; }
+    .error { background: #fce8e6; color: #c5221f; }
+    small { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Nueva tarea</h1>
+
+  <form id="formulario">
+    <label for="titulo">Título</label>
+    <input id="titulo" name="titulo" type="text" required maxlength="200" placeholder="Ej. Preparar informe" />
+
+    <label for="prioridad">Prioridad</label>
+    <select id="prioridad" name="prioridad">
+      <option value="Alta">Alta</option>
+      <option value="Media">Media</option>
+      <option value="Baja">Baja</option>
+    </select>
+
+    <label for="url">URL del webhook</label>
+    <input id="url" type="url" placeholder="http://localhost:5678/webhook/…" />
+    <small>
+      Sin dirección fija: se recuerda la última usada o se toma de <code>?url=…</code>.
+      Usa <code>/webhook/</code> (flujo activado); <code>/webhook-test/</code> solo atiende una petición.
+    </small>
+
+    <button type="submit" id="enviar">Enviar</button>
+  </form>
+
+  <div id="resultado" role="status"></div>
+
+  <script>
+    const form = document.getElementById("formulario");
+    const boton = document.getElementById("enviar");
+    const resultado = document.getElementById("resultado");
+    const campoUrl = document.getElementById("url");
+
+    // No hay una dirección escrita en el código: viene de ?url=…, de la última usada, o queda vacía.
+    function recordada() {
+      try { return localStorage.getItem("webhookUrl") || ""; } catch { return ""; }
+    }
+    campoUrl.value = new URLSearchParams(location.search).get("url") || recordada();
+
+    function mostrar(texto, clase) {
+      resultado.textContent = texto;
+      resultado.className = clase;
+      resultado.style.display = "block";
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const titulo = document.getElementById("titulo").value.trim();
+      const prioridad = document.getElementById("prioridad").value;
+      const url = campoUrl.value.trim();
+      if (!url) {
+        mostrar("Indica la dirección del webhook de n8n.", "error");
+        return;
+      }
+      try { localStorage.setItem("webhookUrl", url); } catch { /* sin almacenamiento: no pasa nada */ }
+
+      boton.disabled = true;
+      resultado.style.display = "none";
+
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ titulo, prioridad }),
+        });
+        const texto = await res.text();
+        if (!res.ok) {
+          mostrar(`n8n respondió ${res.status}\n${texto}`, "error");
+        } else {
+          mostrar(`Enviado correctamente (${res.status})\n${texto}`, "ok");
+          document.getElementById("titulo").value = "";  // la dirección del webhook se conserva
+        }
+      } catch (err) {
+        mostrar(
+          "No se pudo conectar con n8n.\n" +
+            "Revisa que n8n esté en marcha, que el webhook esté escuchando " +
+            "y la opción 'Allowed Origins (CORS)' del nodo Webhook.\n\n" + err.message,
+          "error"
+        );
+      } finally {
+        boton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

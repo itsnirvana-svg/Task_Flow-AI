@@ -1,0 +1,33 @@
+# Secretos y entorno
+.env
+.env.*
+!.env.example
+*.bak
+set-github-token.ps1
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Base de datos local y informes
+taskflow.db
+.claude/reports/
+
+taskflow-web/dist/

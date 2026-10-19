@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="TaskFlow AI: gestor de tareas. Primera versión del dashboard." />
+  <title>TaskFlow AI | Dashboard</title>
+  <!-- Favicon incrustado: evita la petición (y el 404) de /favicon.ico; la CSP permite data: en img-src -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234f46e5'/%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Íconos reutilizables: se usan con <svg class="icon"><use href="#i-nombre"/></svg> -->
+  <svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false">
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+    <symbol id="i-tasks" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12l3 3 5-6"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  </svg>
+
+  <div class="app">
+
+    <!-- Barra lateral -->
+    <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
+      <div class="brand">
+        <span class="brand-logo" aria-hidden="true">
+          <svg class="icon icon-lg icon-bold"><use href="#i-check"/></svg>
+        </span>
+        <span class="brand-name">TaskFlow <strong>AI</strong></span>
+      </div>
+
+      <nav class="nav">
+        <a href="#/dashboard" class="nav-link is-active" data-nav="dashboard" aria-current="page">
+          <svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>
+          <span>Dashboard</span>
+        </a>
+        <a href="#/tareas" class="nav-link" data-nav="tareas">
+          <svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>
+          <span>Tareas</span>
+        </a>
+        <a href="#/proyectos" class="nav-link" data-nav="proyectos">
+          <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+          <span>Proyectos</span>
+        </a>
+        <a href="#/calendario" class="nav-link" data-nav="calendario">
+          <svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg>
+          <span>Calendario</span>
+        </a>
+        <a href="#/configuracion" class="nav-link" data-nav="configuracion">
+          <svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>
+          <span>Configuración</span>
+        </a>
+      </nav>
+
+      <p class="sidebar-foot">Versión 0.1 · Curso</p>
+    </aside>
+    <div class="overlay" id="overlay" hidden></div>
+
+    <!-- Contenido principal -->
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false">
+          <svg class="icon icon-lg" aria-hidden="true"><use href="#i-menu"/></svg>
+        </button>
+        <h1 class="topbar-title" id="topbarTitle">Dashboard</h1>
+
+        <label class="search" for="searchInput">
+          <span class="visually-hidden">Buscar tareas</span>
+          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"/></svg>
+          <input id="searchInput" type="search" placeholder="Buscar tareas…" autocomplete="off" />
+        </label>
+
+        <div class="user" title="Usuario de demostración">
+          <span class="avatar" aria-hidden="true">TF</span>
+          <span class="user-name">Usuario demo</span>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="page-head" data-view="dashboard">
+          <div>
+            <h2 tabindex="-1">Resumen general</h2>
+            <p class="muted">Estado actual de tus tareas.</p>
+          </div>
+          <button class="btn btn-primary" id="newTaskBtn" type="button">
+            <svg class="icon icon-sm icon-bold" aria-hidden="true"><use href="#i-plus"/></svg>
+            Nueva tarea
+          </button>
+        </section>
+
+        <!-- Tarjetas de estadísticas -->
+        <section class="stats" data-view="dashboard" aria-label="Estadísticas de tareas">
+          <article class="stat-card stat-total">
+            <span class="stat-label">Tareas totales</span>
+            <strong class="stat-value" id="statTotal">0</strong>
+          </article>
+          <article class="stat-card stat-pending">
+            <span class="stat-label">Pendientes</span>
+            <strong class="stat-value" id="statPending">0</strong>
+          </article>
+          <article class="stat-card stat-progress">
+            <span class="stat-label">En progreso</span>
+            <strong class="stat-value" id="statProgress">0</strong>
+          </article>
+          <article class="stat-card stat-done">
+            <span class="stat-label">Completadas</span>
+            <strong class="stat-value" id="statDone">0</strong>
+          </article>
+        </section>
+
+        <!-- Tabla de tareas -->
+        <section class="panel" data-view="dashboard" aria-labelledby="tableTitle">
+          <div class="panel-head">
+            <h3 id="tableTitle">Tareas registradas</h3>
+            <div class="filters" role="group" aria-label="Filtrar por estado">
+              <button type="button" class="chip is-active" data-filter="todas">Todas</button>
+              <button type="button" class="chip" data-filter="pendiente">Pendientes</button>
+              <button type="button" class="chip" data-filter="en-progreso">En progreso</button>
+              <button type="button" class="chip" data-filter="completada">Completadas</button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th scope="col">Tarea</th>
+                  <th scope="col">Proyecto</th>
+                  <th scope="col">Prioridad</th>
+                  <th scope="col">Estado</th>
+                  <th scope="col">Fecha límite</th>
+                </tr>
+              </thead>
+              <tbody id="taskBody"></tbody>
+            </table>
+          </div>
+          <p class="empty" id="emptyState" hidden>No hay tareas que coincidan con la búsqueda.</p>
+        </section>
+
+        <!-- Vistas del menú: su contenido lo construye cada componente (js/components/*-view.js) -->
+        <section class="view" id="viewTareas" data-view="tareas" hidden></section>
+        <section class="view" id="viewProyectos" data-view="proyectos" hidden></section>
+        <section class="view" id="viewCalendario" data-view="calendario" hidden></section>
+        <section class="view" id="viewConfiguracion" data-view="configuracion" hidden></section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Diálogo: nueva tarea -->
+  <dialog class="dialog" id="taskDialog" aria-labelledby="dialogTitle">
+    <form id="taskForm" method="dialog" novalidate>
+      <h2 id="dialogTitle">Nueva tarea</h2>
+
+      <div class="field">
+        <label for="fTitle">Título</label>
+        <input id="fTitle" name="title" type="text" maxlength="120" required placeholder="Ej. Preparar informe semanal" />
+        <p class="error" id="titleError" hidden>Escribe un título.</p>
+      </div>
+
+      <div class="field">
+        <label for="fProject">Proyecto</label>
+        <input id="fProject" name="project" type="text" maxlength="60" placeholder="Ej. Sitio web" />
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="fPriority">Prioridad</label>
+          <select id="fPriority" name="priority">
+            <option value="alta">Alta</option>
+            <option value="media" selected>Media</option>
+            <option value="baja">Baja</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="fStatus">Estado</label>
+          <select id="fStatus" name="status">
+            <option value="pendiente" selected>Pendiente</option>
+            <option value="en-progreso">En progreso</option>
+            <option value="completada">Completada</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="fDue">Fecha límite</label>
+        <input id="fDue" name="due" type="date" />
+      </div>
+
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" type="button" id="cancelBtn">Cancelar</button>
+        <button class="btn btn-primary" type="submit">Guardar tarea</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Orden de carga: datos → utilidades → componentes → estado → arranque -->
+  <script src="js/data.js"></script>
+  <script src="js/lib/dom.js"></script>
+  <script src="js/lib/format.js"></script>
+  <script src="js/lib/utils.js"></script>
+  <script src="js/lib/settings.js"></script>
+  <script src="js/components/badge.js"></script>
+  <script src="js/components/stat-cards.js"></script>
+  <script src="js/components/task-table.js"></script>
+  <script src="js/components/task-dialog.js"></script>
+  <script src="js/components/sidebar.js"></script>
+  <script src="js/components/task-list.js"></script>
+  <script src="js/components/projects-view.js"></script>
+  <script src="js/components/calendar-view.js"></script>
+  <script src="js/components/settings-view.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/router.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

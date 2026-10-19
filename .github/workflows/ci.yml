@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Lint y pruebas (backend y hooks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r backend/requirements-dev.txt
+      - run: ruff check backend/app backend/tests .claude tools
+      - run: pytest -q  # backend/tests y .claude/hooks, según pyproject.toml
+
+  web:
+    name: Empaquetado de la interfaz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r tools/requirements.txt
+      - run: python tools/build_web.py
+      - name: Comprobar la sintaxis del JavaScript generado
+        run: node --check taskflow-web/dist/assets/app.*.js
+
+  sql:
+    name: Sintaxis de los scripts SQL
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pglast
+      - run: |
+          python - <<'PY'
+          import glob, pglast
+          archivos = glob.glob("backend/db/**/*.sql", recursive=True)
+          for ruta in archivos:
+              pglast.parse_sql(open(ruta, encoding="utf-8").read())
+              print("OK", ruta)
+          assert archivos, "No se encontraron scripts SQL"
+          PY
