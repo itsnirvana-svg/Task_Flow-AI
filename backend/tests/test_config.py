@@ -8,12 +8,18 @@ from pydantic import ValidationError
 
 from app.config import ENV_FILE, Settings, is_local
 
-NOMBRES = ("APP_ENV", "DATABASE_URL", "CORS_ORIGINS", "N8N_WEBHOOK_URL", "N8N_WEBHOOK_SECRET")
+NOMBRES = (
+    "APP_ENV", "DATABASE_URL", "CORS_ORIGINS", "N8N_WEBHOOK_URL", "N8N_WEBHOOK_SECRET",
+    "AUTH_DISABLED", "API_KEYS", "ADMIN_USERNAME", "ADMIN_PASSWORD_HASH", "AUTH_SECRET_KEY",
+)
+
+CLAVE_LARGA = "k" * 40
 
 PRODUCCION_VALIDA = {
     "app_env": "production",
     "database_url": "postgresql://usuario:clave@db.tu-empresa.com:5432/taskflow",
     "cors_origins": "https://tareas.tu-empresa.com",
+    "api_keys": f"n8n:{CLAVE_LARGA}",
 }
 
 
@@ -122,6 +128,50 @@ def test_produccion_rechaza_direcciones_de_prueba(campos, problema):
 
 def test_produccion_sin_webhook_es_valida_los_eventos_son_opcionales():
     assert configuracion(**PRODUCCION_VALIDA).n8n_webhook_url == ""
+
+
+# ---------------------------------------------------------------- autenticación
+
+
+HASH = "scrypt$16384$8$1$c2FsdA==$aGFzaA=="  # solo la forma: estas pruebas no verifican contraseñas
+
+
+@pytest.mark.parametrize(
+    ("campos", "problema"),
+    [
+        ({"auth_disabled": True}, "AUTH_DISABLED=true deja la API abierta"),
+        ({"api_keys": ""}, "Sin credenciales"),
+        ({"api_keys": "n8n:corta"}, r"necesita 32\+ caracteres"),
+        ({"api_keys": "", "admin_username": "ana", "admin_password_hash": HASH,
+          "auth_secret_key": "corta"}, "AUTH_SECRET_KEY necesita 32"),
+    ],
+)
+def test_produccion_exige_autenticacion_segura(campos, problema):
+    with pytest.raises(ValidationError, match=problema):
+        configuracion(**{**PRODUCCION_VALIDA, **campos})
+
+
+def test_produccion_acepta_inicio_de_sesion_sin_claves_de_api():
+    ajustes = configuracion(
+        **{**PRODUCCION_VALIDA, "api_keys": ""},
+        admin_username="ana", admin_password_hash=HASH, auth_secret_key=CLAVE_LARGA,
+    )
+    assert ajustes.login_configured
+
+
+def test_el_formato_de_las_claves_de_api_se_valida_siempre():
+    with pytest.raises(ValidationError, match="nombre:clave"):
+        configuracion(api_keys="sin-separador")
+    assert configuracion(api_keys="n8n:abc, otro:def").api_key_map == {"n8n": "abc", "otro": "def"}
+
+
+def test_un_hash_de_contrasena_sin_clave_de_firma_se_rechaza_al_arrancar():
+    with pytest.raises(ValidationError, match="AUTH_SECRET_KEY"):
+        configuracion(admin_username="ana", admin_password_hash=HASH)
+
+
+def test_por_defecto_la_autenticacion_esta_activa():
+    assert configuracion().auth_disabled is False
 
 
 # ---------------------------------------------------------------- documentación y código

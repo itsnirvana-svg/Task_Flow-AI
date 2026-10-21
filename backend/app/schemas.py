@@ -59,3 +59,16 @@ class TaskRead(BaseModel):
 
 class PrioritizeResponse(BaseModel):
     suggestion: str
+
+
+class LoginRequest(BaseModel):
+    """Cuerpo de `POST /api/auth/login`. Los máximos evitan cálculos de hash con textos enormes."""
+
+    username: Annotated[str, Field(min_length=1, max_length=100)]
+    password: Annotated[str, Field(min_length=1, max_length=200)]
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int  # segundos de validez del token
