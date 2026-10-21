@@ -154,8 +154,11 @@ corregir. Así no se despliega por accidente apuntando a un entorno de pruebas.
 
 ### 3.4 Ciclo de vida
 
-Al arrancar, `main.py` crea las tablas (solo desarrollo) y lanza el **despachador de eventos**. Al
-apagarse lo detiene y los eventos sin enviar **quedan en la base de datos** hasta el siguiente arranque.
+Al arrancar, `main.py` ejecuta `Base.metadata.create_all(engine)` y lanza el **despachador de
+eventos**. `create_all` se ejecuta **en todos los perfiles, también en producción**: solo crea las
+tablas que faltan (nunca modifica las existentes) y las crea con la forma de `models.py`, que hoy
+**no coincide** con `db/schema.sql` (ver §5.2). Al apagarse, la aplicación detiene el despachador y
+los eventos sin enviar **quedan en la base de datos** hasta el siguiente arranque.
 
 ---
 
@@ -202,10 +205,15 @@ stateDiagram-v2
 | Parámetro | Valor por defecto | Variable |
 |---|---|---|
 | Intentos máximos | 8 | `EVENTS_MAX_ATTEMPTS` |
-| Espera inicial / máxima | 5 s / 15 min (se duplica en cada intento) | `EVENTS_RETRY_BASE_SECONDS`, `EVENTS_RETRY_MAX_SECONDS` |
+| Espera inicial / tope | 5 s / 15 min (la espera se duplica en cada intento) | `EVENTS_RETRY_BASE_SECONDS`, `EVENTS_RETRY_MAX_SECONDS` |
 | Sondeo del despachador | 1 s (se despierta antes con `notify()`) | `EVENTS_POLL_SECONDS` |
 | Retención de enviados | 7 días | `EVENTS_RETENTION_DAYS` |
 | Tiempo máximo por envío | 5 s | — |
+
+Con los valores por defecto las esperas entre intentos son 5, 10, 20, 40, 80, 160 y 320 s, así que un
+evento que siempre falla pasa a `dead` a los **~10,6 minutos**. El tope de 15 min solo se alcanzaría
+con más intentos o con una espera inicial mayor. Mientras un evento espera su reintento, los
+siguientes esperan también, para conservar el orden.
 
 ### 4.4 Contrato del mensaje
 
@@ -309,9 +317,14 @@ erDiagram
 | `tasks`, `event_outbox` | Ver §5.1 | ✅ |
 
 Las **migraciones** para bases ya creadas están en `backend/db/migrations/`
-(`add_event_outbox.sql`, `add_calendar_integrations.sql`) y son idempotentes. En desarrollo, las tablas
-se crean solas al arrancar; **en producción deben aplicarse migraciones** (aún no hay una herramienta
-como Alembic).
+(`add_event_outbox.sql`, `add_calendar_integrations.sql`) y son idempotentes. Las tablas que usa el
+código se crean solas al arrancar (§3.4), en cualquier perfil; aún no hay una herramienta de
+migraciones como Alembic.
+
+> ⚠️ **`schema.sql` y el modelo de la aplicación no coinciden.** En `schema.sql`, `tasks` exige
+> `project_id` y `created_by` (`NOT NULL`), columnas que `TaskModel` todavía no tiene: una base creada
+> con `schema.sql` rechazaría las inserciones de la API. Hasta que existan proyectos y usuarios, la
+> base debe crearse con `create_all` y no con `schema.sql`. Ver §10.
 
 ---
 
@@ -433,7 +446,8 @@ dispara a sí mismo.
 | Webhook de n8n | Sin verificar la cabecera secreta | Activar *Header Auth* y descartar `event_id` repetidos |
 | Flujo de n8n | No versionado | Exportar el flujo a JSON y guardarlo en el repositorio |
 | Google Calendar | Sin implementar | Flujo en n8n y tabla `calendar_integrations` |
+| Esquema de PostgreSQL | `schema.sql` exige `project_id` y `created_by` en `tasks`, que el modelo no tiene; `create_all` se ejecuta siempre | Elegir una única fuente del esquema (Alembic) y probarla contra PostgreSQL |
 | Migraciones | Manuales (`psql`) | Adoptar Alembic antes de producción |
 | PostgreSQL | El esquema se valida con `pglast`, pero no se ha ejecutado contra un servidor real | Probar con una instancia real (p. ej., en Docker) |
-| Escalado del despachador | Un hilo por proceso: con varias réplicas de la API habría varios despachadores | Un solo proceso despachador, o bloqueo de filas (`FOR UPDATE SKIP LOCKED`) |
+| Escalado del despachador | Un hilo por proceso. **Con varios procesos se envían eventos duplicados** (en una prueba con 2 despachadores: 115 envíos para 60 eventos) | Ejecutar un solo proceso de la API, o bloquear filas (`FOR UPDATE SKIP LOCKED`) |
 | Historial de IA y registros de n8n | Tablas diseñadas, no usadas | Guardar cada sugerencia y cada ejecución |

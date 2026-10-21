@@ -255,8 +255,8 @@ tarea, y un despachador en segundo plano lo envía a n8n:
 | Situación | Qué ocurre |
 |---|---|
 | n8n responde | El evento pasa a `sent` |
-| n8n cae, tarda o devuelve error | El evento sigue en la base de datos y se **reintenta** con espera creciente (5 s, 10 s, 20 s… hasta 15 min) |
-| Se agotan los intentos (8 por defecto) | Pasa a `dead` (queda como evidencia) y el resto continúa |
+| n8n cae, tarda o devuelve error | El evento sigue en la base de datos y se **reintenta** con espera creciente (5 s, 10 s, 20 s…; tope configurable de 15 min) |
+| Se agotan los intentos (8 por defecto, unos 10 minutos en total) | Pasa a `dead` (queda como evidencia) y el resto continúa |
 | La API se reinicia o se cae | Los pendientes se envían al volver a arrancar: **no se pierde ninguno** |
 | n8n colgado | Las peticiones a la API no se ven afectadas |
 
