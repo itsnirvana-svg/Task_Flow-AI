@@ -42,6 +42,7 @@
     });
   }
 
+  /** Vencida: tiene fecha anterior a hoy y no está completada (vence al terminar su día). */
   function isOverdue(task) {
     if (!task.due || task.status === STATUS.DONE) return false;
     const today = new Date();

@@ -75,6 +75,7 @@ def minify_html(html: str) -> str:
 
 
 def build() -> None:
+    """Reconstruye `dist/` desde cero a partir de `index.html` y de los archivos que enlaza."""
     source_html = (WEB / "index.html").read_text(encoding="utf-8")
     script_paths = SCRIPT_TAG.findall(source_html)
     css_paths = CSS_LINK.findall(source_html)
@@ -104,6 +105,7 @@ def build() -> None:
 
 
 def report(source_html, script_paths, css_path, built_texts, names) -> None:
+    """Imprime el tamaño antes y después (sin comprimir y con gzip) y el número de peticiones."""
     js, css, html = built_texts
     js_name, css_name = names
     sources = {

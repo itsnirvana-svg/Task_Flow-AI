@@ -6,6 +6,13 @@
 
   const copy = (tasks) => tasks.map((task) => ({ ...task }));
 
+  /**
+   * Crea el estado. Una tarea tiene esta forma:
+   *   { id, title, project, priority: "alta"|"media"|"baja",
+   *     status: "pendiente"|"en-progreso"|"completada", due: "AAAA-MM-DD" o "" }
+   * OJO al conectar la API: allí `status` es todo/in_progress/done y `priority` va de 1 a 4,
+   * así que habrá que traducir los valores en este archivo.
+   */
   function createStore(initialTasks) {
     const state = { tasks: copy(initialTasks), filter: "todas", query: "" };
     const listeners = new Set();

@@ -1,3 +1,9 @@
+"""Configuración de la aplicación, leída de variables de entorno o del archivo `.env`.
+
+Se importa el objeto `settings` (una única instancia). Hay dos perfiles según `APP_ENV`; el de
+producción valida al arrancar que ninguna conexión apunte a un entorno de desarrollo o de prueba.
+"""
+
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -20,6 +26,9 @@ def is_local(url: str) -> bool:
 
 
 class Settings(BaseSettings):
+    """Cada campo se llena desde la variable de entorno del mismo nombre en mayúsculas
+    (`cors_origins` <- `CORS_ORIGINS`); si no existe, se usa el valor por defecto de aquí."""
+
     model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 
     # "production" impide arrancar con direcciones de desarrollo o de prueba (ver el validador).
@@ -47,6 +56,7 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
+        """`CORS_ORIGINS` llega como texto separado por comas; aquí se convierte en lista."""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @field_validator("database_url")

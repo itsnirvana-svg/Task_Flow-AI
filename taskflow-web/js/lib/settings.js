@@ -11,6 +11,7 @@
 
   let current = { ...DEFAULTS };
 
+  /** Deja solo valores válidos: lo guardado en el navegador puede estar vacío, incompleto o manipulado. */
   function sanitize(values) {
     const name = String(values.name ?? "").trim().slice(0, NAME_MAX);
     return {
@@ -49,6 +50,7 @@
     document.querySelector(".avatar").textContent = initials(current.name);
   }
 
+  /** Combina `changes` con lo actual, lo guarda y lo aplica a la página. */
   function save(changes) {
     current = sanitize({ ...current, ...changes });
     try {

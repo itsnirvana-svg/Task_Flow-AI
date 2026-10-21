@@ -1,3 +1,9 @@
+"""Formas de los datos que entran y salen de la API (validación con Pydantic).
+
+`TaskCreate` y `TaskUpdate` validan lo que envía el cliente; `TaskRead` define la respuesta.
+Los límites (longitudes, rango de prioridad) vienen de constants.py, igual que en el modelo.
+"""
+
 from datetime import date, datetime
 from typing import Annotated
 
@@ -19,6 +25,8 @@ Priority = Annotated[int, Field(ge=PRIORITY_MIN, le=PRIORITY_MAX)]
 
 
 class TaskCreate(BaseModel):
+    """Cuerpo de `POST /api/tasks`. Solo `title` es obligatorio."""
+
     model_config = ConfigDict(use_enum_values=True)
 
     title: Title
@@ -29,6 +37,12 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
+    """Cuerpo de `PATCH /api/tasks/{id}`: actualización parcial.
+
+    Los campos que no se envían no se tocan (el servicio usa `exclude_unset`). Enviar `null` en
+    `title`, `status` o `priority` se ignora, porque esos campos no admiten nulos.
+    """
+
     model_config = ConfigDict(use_enum_values=True)
 
     title: Title | None = None
@@ -42,6 +56,8 @@ class TaskUpdate(BaseModel):
 
 
 class TaskRead(BaseModel):
+    """Respuesta con una tarea. `from_attributes` la construye directamente desde `TaskModel`."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -58,4 +74,6 @@ class TaskRead(BaseModel):
 
 
 class PrioritizeResponse(BaseModel):
+    """Respuesta de `POST /api/ai/prioritize`: texto libre de Claude, no modifica las tareas."""
+
     suggestion: str

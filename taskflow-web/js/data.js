@@ -1,5 +1,5 @@
-/* Datos de ejemplo. En esta primera versión no hay base de datos ni backend:
-   las tareas viven solo en memoria y se reinician al recargar la página. */
+/* Datos de ejemplo. La interfaz aún no está conectada a la API: las tareas viven solo en memoria
+   y se reinician al recargar la página. Se declaran como variable global porque app.js las lee al arrancar. */
 
 const SAMPLE_TASKS = [
   { id: 1, title: "Diseñar la pantalla de inicio", project: "Sitio web", priority: "alta", status: "en-progreso", due: "2026-10-20" },

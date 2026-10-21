@@ -52,6 +52,8 @@
   const render = () => views[current].update();
   const context = { store, settings: TF.settings, openDialog: dialog.open };
 
+  // Cada vista es { update(), applyParams?(params) }: `update` la redibuja cuando cambia el estado
+  // y `applyParams` (opcional) recibe los parámetros de la dirección, como #/tareas?proyecto=X.
   const views = {
     dashboard,
     tareas: TaskList.init($("viewTareas"), context),

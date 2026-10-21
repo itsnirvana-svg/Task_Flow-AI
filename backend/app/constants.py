@@ -4,6 +4,8 @@ from enum import Enum
 
 
 class TaskStatus(str, Enum):
+    """Estado de una tarea. Los valores coinciden con la restricción `status` de db/schema.sql."""
+
     TODO = "todo"
     IN_PROGRESS = "in_progress"
     DONE = "done"
