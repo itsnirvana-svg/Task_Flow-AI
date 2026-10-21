@@ -1,0 +1,360 @@
+{
+  "id": "taskflowEventos01",
+  "name": "TaskFlow AI - Eventos de tareas",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "taskflow",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-taskflow",
+      "name": "Webhook TaskFlow",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "taskflow-eventos",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "taskflowWebhook01",
+          "name": "TaskFlow - secreto del webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Valida el evento y detecta duplicados. NO marca nada como visto: eso se hace al terminar con\n// éxito, para que un evento que falló a medias se reintente (la API lo vuelve a enviar).\nconst EVENTOS = ['task.created', 'task.updated', 'task.completed', 'task.deleted'];\nconst cuerpo = $input.first().json.body ?? {};\nconst vistos = $getWorkflowStaticData('global').vistos ?? {};\n\nconst eventId = typeof cuerpo.event_id === 'string' ? cuerpo.event_id : '';\nconst taskId = Number(cuerpo?.data?.task_id);\n\nlet motivo = null;\nif (!EVENTOS.includes(cuerpo.event)) motivo = 'evento desconocido';\nelse if (!/^[0-9a-f-]{36}$/i.test(eventId)) motivo = 'event_id no válido';\nelse if (!Number.isInteger(taskId) || taskId < 1) motivo = 'task_id no válido';\nelse if (vistos[eventId]) motivo = 'duplicado';\n\nreturn [{\n  json: {\n    procesar: motivo === null,\n    motivo,\n    event: cuerpo.event,\n    event_id: eventId,\n    sequence: cuerpo.sequence,\n    occurred_at: cuerpo.occurred_at,\n    task_id: taskId,\n    external_event_id: cuerpo?.data?.external_event_id ?? null,\n    changed: cuerpo?.data?.changed ?? [],\n  },\n}];"
+      },
+      "id": "validar-y-detectar-duplicados",
+      "name": "Validar y detectar duplicados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.procesar }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "¿hay-que-procesarlo?",
+      "name": "¿Hay que procesarlo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ignorado', motivo: $json.motivo } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "responder-ignorado",
+      "name": "Responder: ignorado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        720,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.event === 'task.deleted' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "¿es-un-borrado?",
+      "name": "¿Es un borrado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://127.0.0.1:8000/api/tasks/{{ $json.task_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 4000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "consultar-la-tarea-en-la-api",
+      "name": "Consultar la tarea en la API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "taskflowApiKey001",
+          "name": "TaskFlow - clave de la API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// La API respondió: 2xx = tarea leída; 404 = la tarea ya no existe (normal si se borró mientras\n// el evento esperaba); cualquier otro código es un fallo y se lanza para que n8n responda con error\n// y la API vuelva a enviar el evento más tarde.\nconst evento = $('Validar y detectar duplicados').first().json;\nconst respuesta = $input.first().json;\nconst codigo = respuesta.statusCode;\n\nif (codigo === 404) return [{ json: { tarea: null, nota: 'la tarea ya no existe' } }];\nif (codigo >= 200 && codigo < 300) return [{ json: { tarea: respuesta.body } }];\nthrow new Error('La API respondió ' + codigo + ' al consultar la tarea ' + evento.task_id);"
+      },
+      "id": "comprobar-la-respuesta-de-la-api",
+      "name": "Comprobar la respuesta de la API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "calendar-crear-o-actualizar-evento-(pend",
+      "name": "Calendar: crear o actualizar evento (pendiente)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "calendar-borrar-evento-(pendiente)",
+      "name": "Calendar: borrar evento (pendiente)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        960,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Marca el evento como procesado (así un reintento posterior se reconoce como duplicado).\n// Se guardan los últimos 7 días y como máximo 5000 identificadores, para no crecer sin límite.\nconst MAX_IDS = 5000;\nconst SIETE_DIAS = 7 * 24 * 3600 * 1000;\nconst evento = $('Validar y detectar duplicados').first().json;\nconst estado = $getWorkflowStaticData('global');\nconst vistos = estado.vistos ?? {};\n\nconst ahora = Date.now();\nvistos[evento.event_id] = ahora;\nfor (const [id, momento] of Object.entries(vistos)) {\n  if (ahora - momento > SIETE_DIAS) delete vistos[id];\n}\nconst ids = Object.keys(vistos);\nif (ids.length > MAX_IDS) {\n  ids.sort((a, b) => vistos[a] - vistos[b]).slice(0, ids.length - MAX_IDS).forEach((id) => delete vistos[id]);\n}\nestado.vistos = vistos;\n\nreturn [{\n  json: {\n    status: 'procesado',\n    event: evento.event,\n    event_id: evento.event_id,\n    sequence: evento.sequence,\n    task_id: evento.task_id,\n  },\n}];"
+      },
+      "id": "registrar-evento-como-procesado",
+      "name": "Registrar evento como procesado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "responder-procesado",
+      "name": "Responder: procesado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1920,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## TaskFlow AI: eventos de tareas\n- El webhook exige la cabecera **X-TaskFlow-Secret** (credencial *TaskFlow - secreto del webhook*). Sin ella n8n responde 403.\n- Los eventos se entregan **al menos una vez**: el mismo `event_id` puede llegar dos veces; aquí se descartan los ya procesados.\n- **Cambia la dirección de la API** en el nodo *Consultar la tarea en la API* (`http://127.0.0.1:8000` es solo para desarrollo; en n8n, `localhost` puede resolverse a IPv6 y fallar) y crea la credencial *TaskFlow - clave de la API* con la cabecera **X-API-Key**.\n- Si la API no responde o da error (salvo 404, tarea ya borrada), el evento **falla** y la API lo reintenta más tarde.\n- Google Calendar aún no está implementado: los nodos *Calendar* son marcadores.",
+        "height": 300,
+        "width": 460
+      },
+      "id": "nota-configuración",
+      "name": "Nota: configuración",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -20,
+        520
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook TaskFlow": {
+      "main": [
+        [
+          {
+            "node": "Validar y detectar duplicados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar y detectar duplicados": {
+      "main": [
+        [
+          {
+            "node": "¿Hay que procesarlo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay que procesarlo?": {
+      "main": [
+        [
+          {
+            "node": "¿Es un borrado?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder: ignorado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Es un borrado?": {
+      "main": [
+        [
+          {
+            "node": "Calendar: borrar evento (pendiente)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Consultar la tarea en la API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar la tarea en la API": {
+      "main": [
+        [
+          {
+            "node": "Comprobar la respuesta de la API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comprobar la respuesta de la API": {
+      "main": [
+        [
+          {
+            "node": "Calendar: crear o actualizar evento (pendiente)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calendar: crear o actualizar evento (pendiente)": {
+      "main": [
+        [
+          {
+            "node": "Registrar evento como procesado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calendar: borrar evento (pendiente)": {
+      "main": [
+        [
+          {
+            "node": "Registrar evento como procesado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar evento como procesado": {
+      "main": [
+        [
+          {
+            "node": "Responder: procesado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}
