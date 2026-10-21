@@ -11,6 +11,7 @@ from sqlalchemy import (
     Text,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
@@ -112,10 +113,14 @@ class OutboxEventModel(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     event_id: Mapped[str] = mapped_column(String(36), unique=True)  # clave de idempotencia
     event: Mapped[str] = mapped_column(String(50))
-    data: Mapped[dict] = mapped_column(JSON)
+    # JSONB en PostgreSQL (como en schema.sql): con JSON genérico, PostgreSQL rechaza el INSERT
+    # porque no convierte un valor `json` en una columna `jsonb`.
+    data: Mapped[dict] = mapped_column(JSON().with_variant(JSONB(), "postgresql"))
     occurred_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
     status: Mapped[str] = mapped_column(String(10), default=OutboxStatus.PENDING.value)
     attempts: Mapped[int] = mapped_column(default=0)
     next_attempt_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+    # Reserva del despachador que lo está enviando: mientras no venza, otros no lo envían.
+    locked_until: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     last_error: Mapped[str | None] = mapped_column(Text, default=None)
     sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)

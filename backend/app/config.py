@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     events_max_attempts: int = 8
     events_retry_base_seconds: float = 5.0
     events_retry_max_seconds: float = 900.0
+    # Cuánto reserva un despachador un evento mientras lo envía (debe superar el tiempo máximo de
+    # envío, 5 s). Si el proceso muere a mitad de un envío, otro lo retoma al vencer la reserva.
+    events_lease_seconds: float = 30.0
     events_retention_days: int = 7  # los enviados se conservan este tiempo como evidencia
 
     @property
