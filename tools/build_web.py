@@ -7,6 +7,11 @@ Qué hace:
 - Guarda JS y CSS en dist/assets/ con un resumen del contenido en el nombre
   (assets/app.<hash>.js): se pueden cachear "para siempre" y se descargan de nuevo solo si cambian.
 
+Modo de la interfaz: sin configurar nada es una demostración con datos de ejemplo. Si se define
+la variable de entorno TASKFLOW_API_URL (por ejemplo https://api.tu-empresa.com), la interfaz se
+construye conectada a esa API y exige iniciar sesión. Esa dirección debe estar permitida en
+`connect-src` de la CSP de vercel.json; si no, la construcción falla (el navegador la bloquearía).
+
 Es el comando de construcción de Vercel (ver vercel.json). Si los minificadores no están
 instalados, genera igualmente el paquete sin minificar: el despliegue no falla por eso.
 
@@ -17,10 +22,13 @@ Uso (desde la raíz del proyecto):
 
 import gzip
 import hashlib
+import json
+import os
 import re
 import shutil
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 try:
     import rcssmin
@@ -29,8 +37,14 @@ except ImportError:  # sin minificadores se genera el paquete igual, solo que si
     rcssmin = rjsmin = None
 
 WEB = Path(__file__).resolve().parent.parent / "taskflow-web"
+VERCEL_JSON = Path(__file__).resolve().parent.parent / "vercel.json"
 DIST = WEB / "dist"
 ASSETS = "assets"
+
+API_URL_ENV = "TASKFLOW_API_URL"
+CONFIG_JS = "js/config.js"
+API_URL_MARKER = re.compile(r'apiUrl: "" /\* TASKFLOW_API_URL \*/')
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 SCRIPT_TAG = re.compile(r'[ \t]*<script src="(js/[^"]+)"></script>\n?')
 CSS_LINK = re.compile(r'<link rel="stylesheet" href="(css/[^"]+)" />')
@@ -49,6 +63,49 @@ def read_source(relative: str) -> str:
             sys.exit(f"{relative}: no existe con esa capitalización exacta (en Linux importa)")
         folder = folder / part
     return (WEB / relative).read_text(encoding="utf-8")
+
+
+def api_url_from_env() -> str:
+    """Dirección de la API (TASKFLOW_API_URL), validada; vacía si no se define (demostración)."""
+    url = os.environ.get(API_URL_ENV, "").strip().rstrip("/")
+    if not url:
+        return ""
+    parts = urlparse(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        sys.exit(f"{API_URL_ENV} debe ser una dirección http(s)://servidor, no {url!r}")
+    if parts.path or parts.query or parts.fragment or parts.username or parts.password:
+        sys.exit(f"{API_URL_ENV} debe ser solo el origen (https://servidor), sin ruta ni datos")
+    if parts.scheme == "http" and parts.hostname not in LOCAL_HOSTS:
+        sys.exit(f"{API_URL_ENV} debe usar https:// (una página https bloquea las llamadas http)")
+    return url
+
+
+def check_csp_allows(url: str) -> None:
+    """Falla si `connect-src` de la CSP no permite llamar a la API: la interfaz no funcionaría."""
+    config = json.loads(VERCEL_JSON.read_text(encoding="utf-8"))
+    csp = next(
+        header["value"]
+        for rule in config["headers"]
+        if rule["source"] == "/(.*)"
+        for header in rule["headers"]
+        if header["key"] == "Content-Security-Policy"
+    )
+    directives = {d.split()[0]: d.split()[1:] for d in csp.split(";") if d.strip()}
+    allowed = directives.get("connect-src", directives.get("default-src", []))
+    if url not in allowed:
+        sys.exit(
+            f"La CSP de vercel.json no permite conectar con {url}.\n"
+            f"Añádela a connect-src (por ejemplo: connect-src 'self' {url}) y vuelve a construir."
+        )
+
+
+def apply_api_url(source: str, url: str) -> str:
+    """Escribe la dirección de la API en js/config.js (en el modo demostración no cambia nada)."""
+    if not url:
+        return source
+    if not API_URL_MARKER.search(source):
+        sys.exit(f"{CONFIG_JS} no tiene el marcador TASKFLOW_API_URL; no se puede fijar la API")
+    return API_URL_MARKER.sub(lambda _: f"apiUrl: {json.dumps(url)}", source)
 
 
 def minify_js(text: str) -> str:
@@ -81,8 +138,17 @@ def build() -> None:
     if not script_paths or len(css_paths) != 1:
         sys.exit("No se encontraron los <script> o la hoja de estilos esperados en index.html")
 
+    api_url = api_url_from_env()
+    # Una API local solo sirve para probar en el propio equipo, donde no rige la CSP de Vercel.
+    if api_url and urlparse(api_url).hostname not in LOCAL_HOSTS:
+        check_csp_allows(api_url)
+
+    def source_of(path: str) -> str:
+        text = read_source(path)
+        return apply_api_url(text, api_url) if path == CONFIG_JS else text
+
     # Los scripts se concatenan en el orden en que los carga index.html.
-    js = ";\n".join(minify_js(read_source(p)) for p in script_paths)
+    js = ";\n".join(minify_js(source_of(p)) for p in script_paths)
     css = minify_css(read_source(css_paths[0]))
     js_name = f"{ASSETS}/app.{short_hash(js)}.js"
     css_name = f"{ASSETS}/styles.{short_hash(css)}.css"
@@ -100,6 +166,7 @@ def build() -> None:
     (DIST / css_name).write_text(css, encoding="utf-8")
     (DIST / "index.html").write_text(html, encoding="utf-8")
 
+    print(f"Modo: conectado a {api_url}" if api_url else "Modo: demostración (sin API)")
     report(source_html, script_paths, css_paths[0], (js, css, html), (js_name, css_name))
 
 

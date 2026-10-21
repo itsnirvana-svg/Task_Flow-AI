@@ -23,7 +23,7 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   </svg>
 
-  <div class="app">
+  <div class="app" id="appShell">
 
     <!-- Barra lateral -->
     <aside class="sidebar" id="sidebar" aria-label="Navegación principal">
@@ -80,6 +80,9 @@
           <span class="user-name">Usuario demo</span>
         </div>
       </header>
+
+      <!-- Cargando y errores de la API -->
+      <div class="status-bar" id="statusBar" hidden></div>
 
       <main class="content">
         <section class="page-head" data-view="dashboard">
@@ -151,6 +154,9 @@
     </div>
   </div>
 
+  <!-- Inicio de sesión (solo en el modo conectado a la API; lo muestra app.js) -->
+  <main class="login" id="loginView" hidden></main>
+
   <!-- Diálogo: nueva tarea -->
   <dialog class="dialog" id="taskDialog" aria-labelledby="dialogTitle">
     <form id="taskForm" method="dialog" novalidate>
@@ -198,12 +204,14 @@
     </form>
   </dialog>
 
-  <!-- Orden de carga: datos → utilidades → componentes → estado → arranque -->
+  <!-- Orden de carga: configuración y datos → utilidades → componentes → repositorio y estado → arranque -->
+  <script src="js/config.js"></script>
   <script src="js/data.js"></script>
   <script src="js/lib/dom.js"></script>
   <script src="js/lib/format.js"></script>
   <script src="js/lib/utils.js"></script>
   <script src="js/lib/settings.js"></script>
+  <script src="js/lib/api.js"></script>
   <script src="js/components/badge.js"></script>
   <script src="js/components/stat-cards.js"></script>
   <script src="js/components/task-table.js"></script>
@@ -213,6 +221,9 @@
   <script src="js/components/projects-view.js"></script>
   <script src="js/components/calendar-view.js"></script>
   <script src="js/components/settings-view.js"></script>
+  <script src="js/components/login-view.js"></script>
+  <script src="js/components/status-bar.js"></script>
+  <script src="js/repository.js"></script>
   <script src="js/store.js"></script>
   <script src="js/router.js"></script>
   <script src="js/app.js"></script>

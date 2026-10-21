@@ -609,6 +609,36 @@ a { color: inherit; text-decoration: none; }
 .error { color: var(--color-danger); font-size: 0.85rem; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
 
+/* ---------- Inicio de sesión y franja de estado (modo conectado a la API) ---------- */
+.login {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px 16px;
+  background: var(--color-bg);
+}
+
+.login-card { width: min(420px, 100%); padding: 28px; }
+.login-brand { margin-bottom: 18px; font-size: 1.1rem; color: var(--color-primary-text); }
+.login-card h2 { margin-bottom: 6px; font-size: 1.4rem; }
+.login-card .muted { margin-bottom: 20px; }
+.login-card .error { margin-bottom: 12px; }
+.btn-block { width: 100%; justify-content: center; }
+.btn:disabled { opacity: 0.6; cursor: progress; }
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 28px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-text);
+  font-size: 0.9rem;
+}
+
+.status-bar.is-error { background: var(--color-danger-soft); color: var(--color-danger-text); }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
   .sidebar {
@@ -622,6 +652,7 @@ a { color: inherit; text-decoration: none; }
   .menu-btn { display: grid; }
   .topbar { padding: 0 16px; }
   .content { padding: 20px 16px; }
+  .status-bar { padding: 10px 16px; }
 }
 
 @media (max-width: 600px) {

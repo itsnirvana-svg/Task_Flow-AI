@@ -15,7 +15,14 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
-from .constants import PRIORITY_DEFAULT, PRIORITY_MAX, PRIORITY_MIN, OutboxStatus, TaskStatus
+from .constants import (
+    PRIORITY_DEFAULT,
+    PRIORITY_MAX,
+    PRIORITY_MIN,
+    PROJECT_MAX,
+    OutboxStatus,
+    TaskStatus,
+)
 from .database import Base
 
 
@@ -85,6 +92,9 @@ class TaskModel(Base):
     status: Mapped[str] = mapped_column(String(20), default=TaskStatus.TODO.value)
     priority: Mapped[int] = mapped_column(SmallInteger, default=PRIORITY_DEFAULT)
     due_date: Mapped[date | None] = mapped_column(Date, default=None)
+    # Nombre del proyecto, en texto libre. Transitorio: cuando exista la tabla `projects`, se
+    # sustituirá por una relación (project_id).
+    project: Mapped[str | None] = mapped_column(String(PROJECT_MAX), default=None)
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     external_event_id: Mapped[str | None] = mapped_column(String(255), default=None)
     reminded_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)

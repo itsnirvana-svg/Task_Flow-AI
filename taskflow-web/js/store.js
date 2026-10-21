@@ -1,15 +1,37 @@
-/* Estado de la aplicación (en memoria) con suscripción a cambios.
-   Cuando exista backend, solo hay que sustituir los métodos de este archivo por llamadas a la API. */
+/* Estado de la aplicación con suscripción a cambios.
+   Las tareas se leen y se guardan a través de un repositorio (repository.js): en memoria en el modo
+   demostración, en la API en el modo conectado. Las operaciones son asíncronas: el estado cambia
+   cuando el repositorio confirma, y si falla queda el mensaje en `state.error`.
+
+   Una tarea tiene esta forma:
+     { id, title, project, priority: "alta"|"media"|"baja",
+       status: "pendiente"|"en-progreso"|"completada", due: "AAAA-MM-DD" o "" }
+   La traducción al vocabulario de la API (todo/in_progress/done, prioridad 1 a 4) está en lib/api.js. */
 (function (TF) {
   "use strict";
   const { STATUS, projectOf, isOverdue } = TF.format;
 
-  const copy = (tasks) => tasks.map((task) => ({ ...task }));
-
-  function createStore(initialTasks) {
-    const state = { tasks: copy(initialTasks), filter: "todas", query: "" };
+  function createStore(repository) {
+    const state = { tasks: [], filter: "todas", query: "", loading: false, error: null };
     const listeners = new Set();
     const notify = () => listeners.forEach((listener) => listener(state));
+
+    /** Ejecuta una operación del repositorio: avisa mientras carga y recoge el error si falla. */
+    async function run(operation, { loading = false } = {}) {
+      state.error = null;
+      if (loading) {
+        state.loading = true;
+        notify();
+      }
+      try {
+        await operation();
+      } catch (error) {
+        state.error = (error && error.message) || "No se pudo completar la operación.";
+      } finally {
+        state.loading = false;
+        notify();
+      }
+    }
 
     function visibleTasks() {
       const query = state.query.trim().toLowerCase();
@@ -44,6 +66,8 @@
       state,
       visibleTasks,
       projects,
+      /** ¿El repositorio permite volver a los datos de ejemplo? (solo en el modo demostración) */
+      canReset: typeof repository.reset === "function",
       subscribe(listener) {
         listeners.add(listener);
         return () => listeners.delete(listener);
@@ -56,25 +80,46 @@
         state.query = query;
         notify();
       },
-      addTask(data) {
-        const id = state.tasks.reduce((max, task) => Math.max(max, task.id), 0) + 1;
-        state.tasks.unshift({ id, ...data });
+      dismissError() {
+        state.error = null;
         notify();
+      },
+      /** Carga las tareas desde el repositorio (al arrancar y tras iniciar sesión). */
+      load() {
+        return run(async () => {
+          state.tasks = await repository.list();
+        }, { loading: true });
+      },
+      /** Vacía los datos en pantalla (al cerrar sesión): no deben verse tras salir. */
+      clear() {
+        state.tasks = [];
+        state.error = null;
+        notify();
+      },
+      addTask(data) {
+        return run(async () => {
+          state.tasks.unshift(await repository.create(data));
+        });
       },
       updateTask(id, changes) {
-        const task = state.tasks.find((t) => t.id === id);
-        if (!task) return;
-        Object.assign(task, changes);
-        notify();
+        return run(async () => {
+          const saved = await repository.update(id, changes);
+          const index = state.tasks.findIndex((task) => task.id === id);
+          if (index !== -1) state.tasks[index] = saved;
+        });
       },
       removeTask(id) {
-        state.tasks = state.tasks.filter((task) => task.id !== id);
-        notify();
+        return run(async () => {
+          await repository.remove(id);
+          state.tasks = state.tasks.filter((task) => task.id !== id);
+        });
       },
-      /** Vuelve a los datos de ejemplo iniciales. */
+      /** Vuelve a los datos de ejemplo (solo modo demostración). */
       reset() {
-        state.tasks = copy(initialTasks);
-        notify();
+        return run(async () => {
+          await repository.reset();
+          state.tasks = await repository.list();
+        });
       },
     };
   }

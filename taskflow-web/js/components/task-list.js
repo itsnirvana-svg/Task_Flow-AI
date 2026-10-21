@@ -171,7 +171,7 @@
       });
       const tasks = visibleTasks();
       tbody.replaceChildren(...tasks.map(row));
-      empty.hidden = tasks.length > 0;
+      empty.hidden = tasks.length > 0 || store.state.loading;
     }
 
     /** Desde la dirección: #/tareas?proyecto=Sitio%20web filtra por ese proyecto. */

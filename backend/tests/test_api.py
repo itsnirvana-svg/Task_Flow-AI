@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.config import ENV_FILE, settings
-from app.constants import DESCRIPTION_MAX, TaskStatus
+from app.constants import DESCRIPTION_MAX, PROJECT_MAX, TaskStatus
 from app.routers import ai
 from helpers import crear
 
@@ -185,3 +187,32 @@ def test_el_env_se_busca_en_la_raiz_del_proyecto_sin_depender_del_cwd():  # M5
     assert ENV_FILE.is_absolute()
     assert ENV_FILE.name == ".env"
     assert (ENV_FILE.parent / "backend" / "app").is_dir()
+
+
+# ---------------------------------------------------------------- proyecto (texto libre)
+
+
+def test_el_proyecto_se_guarda_recortado_y_es_opcional(client):
+    assert crear(client)["project"] is None
+    assert crear(client, project="  Sitio web  ")["project"] == "Sitio web"
+
+
+@pytest.mark.parametrize("vacio", ["", "   ", None])
+def test_un_proyecto_vacio_equivale_a_sin_proyecto(client, vacio):
+    assert crear(client, project=vacio)["project"] is None
+
+
+def test_el_proyecto_tiene_limite(client):
+    assert crear(client, project="p" * PROJECT_MAX)["project"]
+    demasiado = client.post("/api/tasks", json={"title": "x", "project": "p" * (PROJECT_MAX + 1)})
+    assert demasiado.status_code == 422
+
+
+def test_el_proyecto_se_cambia_y_se_quita_con_patch(client):
+    tarea = crear(client, project="Uno")
+    url = f"/api/tasks/{tarea['id']}"
+
+    assert client.patch(url, json={"project": "Dos"}).json()["project"] == "Dos"
+    assert client.patch(url, json={"title": "Otro título"}).json()["project"] == "Dos"  # no enviado
+    assert client.patch(url, json={"project": ""}).json()["project"] is None
+    assert client.get(url).json()["project"] is None
