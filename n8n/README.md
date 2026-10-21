@@ -74,7 +74,8 @@ Si tras importar algún nodo muestra «credencial no configurada», ábrelo y el
 
 En el nodo **Consultar la tarea en la API**, cambia `http://127.0.0.1:8000` por la dirección real de la
 API. Usa `127.0.0.1` y no `localhost` en local: en n8n, `localhost` puede resolverse a IPv6 (`::1`) y
-la API escucha en IPv4, así que la conexión falla.
+la API escucha en IPv4, así que la conexión falla. En el despliegue con Docker Compose
+([`../deploy/README.md`](../deploy/README.md)) usa `http://api:8000`: n8n y la API comparten red.
 
 ### 4. Configurar la API
 

@@ -216,3 +216,30 @@ def test_el_proyecto_se_cambia_y_se_quita_con_patch(client):
     assert client.patch(url, json={"title": "Otro título"}).json()["project"] == "Dos"  # no enviado
     assert client.patch(url, json={"project": ""}).json()["project"] is None
     assert client.get(url).json()["project"] is None
+
+
+# ---------------------------------------------------------------- disponibilidad
+
+
+def test_ready_comprueba_la_base_de_datos_y_es_publico(anonimo):
+    respuesta = anonimo.get("/health/ready")
+    assert respuesta.status_code == 200 and respuesta.json() == {"status": "ok"}
+
+
+def test_ready_responde_503_sin_detalles_si_la_base_de_datos_falla(anonimo):
+    from app.database import get_db
+    from app.main import app
+
+    class BaseRota:
+        def execute(self, *_):
+            raise RuntimeError("password authentication failed for user taskflow")
+
+        def close(self):
+            pass
+
+    app.dependency_overrides[get_db] = lambda: iter([BaseRota()])
+    respuesta = anonimo.get("/health/ready")
+
+    assert respuesta.status_code == 503
+    assert "password" not in respuesta.text  # el motivo real no sale de la API
+    assert anonimo.get("/health").status_code == 200  # el proceso sigue vivo: solo ready falla

@@ -1,13 +1,14 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from . import models  # noqa: F401  (registra las tablas en Base.metadata)
 from .config import settings
-from .database import Base, SessionLocal, engine
+from .database import Base, DbSession, SessionLocal, engine
 from .routers import ai, auth, tasks
 from .security import current_principal
 from .services import events
@@ -72,4 +73,16 @@ async def task_not_found_handler(_: Request, __: TaskNotFoundError) -> JSONRespo
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    """El proceso está vivo (no comprueba la base de datos)."""
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def ready(db: DbSession) -> dict[str, str]:
+    """La API puede atender peticiones: la base de datos responde. Es la que debe vigilar el
+    alojamiento (y la que usa el healthcheck del contenedor); no revela detalles del fallo."""
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception as error:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible") from error
     return {"status": "ok"}

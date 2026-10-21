@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -11,7 +12,10 @@ ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 POSTGRES_DRIVER = "postgresql+psycopg"
-MIN_SECRET_LENGTH = 32  # claves de API y clave de firma: 32 caracteres o más en producción
+# Claves de API, clave de firma y secreto del webhook: 32 caracteres o más en producción.
+MIN_SECRET_LENGTH = 32
+# Forma del hash que genera tools/hash_password.py: scrypt$N$r$p$sal$hash (sal y hash en base64).
+PASSWORD_HASH_FORMAT = re.compile(r"scrypt\$\d+\$\d+\$\d+\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+")
 
 
 def is_local(url: str) -> bool:
@@ -133,6 +137,8 @@ class Settings(BaseSettings):
                 problems.append("N8N_WEBHOOK_URL usa /webhook-test/ (atiende una sola petición)")
             if not self.n8n_webhook_secret:
                 problems.append("N8N_WEBHOOK_SECRET es obligatorio si hay N8N_WEBHOOK_URL")
+            elif len(self.n8n_webhook_secret) < MIN_SECRET_LENGTH:
+                problems.append(f"N8N_WEBHOOK_SECRET necesita {MIN_SECRET_LENGTH}+ caracteres")
 
         if problems:
             raise ValueError("Configuración no válida para producción:\n- " + "\n- ".join(problems))
@@ -149,6 +155,9 @@ class Settings(BaseSettings):
             problems.append(f"Cada clave de API_KEYS necesita {MIN_SECRET_LENGTH}+ caracteres")
         if self.admin_password_hash and len(self.auth_secret_key) < MIN_SECRET_LENGTH:
             problems.append(f"AUTH_SECRET_KEY necesita {MIN_SECRET_LENGTH}+ caracteres")
+        hash_guardado = self.admin_password_hash
+        if hash_guardado and not PASSWORD_HASH_FORMAT.fullmatch(hash_guardado):
+            problems.append("ADMIN_PASSWORD_HASH no es un hash válido: usa tools/hash_password.py")
         return problems
 
 
