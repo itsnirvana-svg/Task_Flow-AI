@@ -8,12 +8,18 @@ from pydantic import ValidationError
 
 from app.config import ENV_FILE, Settings, is_local
 
-NOMBRES = ("APP_ENV", "DATABASE_URL", "CORS_ORIGINS", "N8N_WEBHOOK_URL", "N8N_WEBHOOK_SECRET")
+NOMBRES = (
+    "APP_ENV", "DATABASE_URL", "CORS_ORIGINS", "N8N_WEBHOOK_URL", "N8N_WEBHOOK_SECRET",
+    "AUTH_DISABLED", "API_KEYS", "ADMIN_USERNAME", "ADMIN_PASSWORD_HASH", "AUTH_SECRET_KEY",
+)
+
+CLAVE_LARGA = "k" * 40
 
 PRODUCCION_VALIDA = {
     "app_env": "production",
     "database_url": "postgresql://usuario:clave@db.tu-empresa.com:5432/taskflow",
     "cors_origins": "https://tareas.tu-empresa.com",
+    "api_keys": f"n8n:{CLAVE_LARGA}",
 }
 
 
@@ -91,7 +97,7 @@ def test_produccion_con_webhook_https_y_secreto_es_valida():
     ajustes = configuracion(
         **PRODUCCION_VALIDA,
         n8n_webhook_url="https://n8n.tu-empresa.com/webhook/taskflow",
-        n8n_webhook_secret="un-secreto-largo",
+        n8n_webhook_secret=CLAVE_LARGA,
     )
     assert ajustes.n8n_webhook_url.endswith("/webhook/taskflow")
 
@@ -124,6 +130,50 @@ def test_produccion_sin_webhook_es_valida_los_eventos_son_opcionales():
     assert configuracion(**PRODUCCION_VALIDA).n8n_webhook_url == ""
 
 
+# ---------------------------------------------------------------- autenticación
+
+
+HASH = "scrypt$16384$8$1$c2FsdA==$aGFzaA=="  # solo la forma: estas pruebas no verifican contraseñas
+
+
+@pytest.mark.parametrize(
+    ("campos", "problema"),
+    [
+        ({"auth_disabled": True}, "AUTH_DISABLED=true deja la API abierta"),
+        ({"api_keys": ""}, "Sin credenciales"),
+        ({"api_keys": "n8n:corta"}, r"necesita 32\+ caracteres"),
+        ({"api_keys": "", "admin_username": "ana", "admin_password_hash": HASH,
+          "auth_secret_key": "corta"}, "AUTH_SECRET_KEY necesita 32"),
+    ],
+)
+def test_produccion_exige_autenticacion_segura(campos, problema):
+    with pytest.raises(ValidationError, match=problema):
+        configuracion(**{**PRODUCCION_VALIDA, **campos})
+
+
+def test_produccion_acepta_inicio_de_sesion_sin_claves_de_api():
+    ajustes = configuracion(
+        **{**PRODUCCION_VALIDA, "api_keys": ""},
+        admin_username="ana", admin_password_hash=HASH, auth_secret_key=CLAVE_LARGA,
+    )
+    assert ajustes.login_configured
+
+
+def test_el_formato_de_las_claves_de_api_se_valida_siempre():
+    with pytest.raises(ValidationError, match="nombre:clave"):
+        configuracion(api_keys="sin-separador")
+    assert configuracion(api_keys="n8n:abc, otro:def").api_key_map == {"n8n": "abc", "otro": "def"}
+
+
+def test_un_hash_de_contrasena_sin_clave_de_firma_se_rechaza_al_arrancar():
+    with pytest.raises(ValidationError, match="AUTH_SECRET_KEY"):
+        configuracion(admin_username="ana", admin_password_hash=HASH)
+
+
+def test_por_defecto_la_autenticacion_esta_activa():
+    assert configuracion().auth_disabled is False
+
+
 # ---------------------------------------------------------------- documentación y código
 
 
@@ -142,3 +192,52 @@ def test_el_codigo_de_la_aplicacion_no_contiene_direcciones_de_prueba():
         texto = archivo.read_text(encoding="utf-8")
         for prohibido in ("localhost", "127.0.0.1", "webhook-test"):
             assert prohibido not in texto, f"{archivo.name} contiene {prohibido}"
+
+
+# ---------------------------------------------------------------- plantillas sin cambiar
+
+
+def test_produccion_rechaza_un_secreto_de_webhook_corto():
+    with pytest.raises(ValidationError, match=r"N8N_WEBHOOK_SECRET necesita 32\+ caracteres"):
+        configuracion(
+            **PRODUCCION_VALIDA,
+            n8n_webhook_url="https://n8n.tu-empresa.com/webhook/taskflow",
+            n8n_webhook_secret="cambia-esto",
+        )
+
+
+@pytest.mark.parametrize("hash_malo", ["scrypt$cambia$esto", "texto", "scrypt$1$2$3$a$"])
+def test_produccion_rechaza_un_hash_de_contrasena_mal_formado(hash_malo):
+    with pytest.raises(ValidationError, match="ADMIN_PASSWORD_HASH no es un hash válido"):
+        configuracion(
+            **{**PRODUCCION_VALIDA, "api_keys": ""},
+            admin_username="ana", admin_password_hash=hash_malo, auth_secret_key=CLAVE_LARGA,
+        )
+
+
+def test_los_marcadores_de_deploy_env_example_no_arrancan_en_produccion():
+    """Quien olvide cambiar un valor de la plantilla recibe un error, no un servidor inseguro."""
+    plantilla = {}
+    ejemplo = (ENV_FILE.parent / "deploy" / ".env.example").read_text(encoding="utf-8")
+    for linea in ejemplo.splitlines():
+        if linea and not linea.startswith("#") and "=" in linea:
+            nombre, valor = linea.split("=", 1)
+            plantilla[nombre] = valor.strip("'")
+
+    with pytest.raises(ValidationError) as error:
+        configuracion(
+            app_env="production",
+            database_url="postgresql://t:t@postgres:5432/taskflow",
+            cors_origins=plantilla["CORS_ORIGINS"],
+            n8n_webhook_url=f"https://n8n.{plantilla['DOMAIN']}/webhook/taskflow",
+            n8n_webhook_secret=plantilla["N8N_WEBHOOK_SECRET"],
+            api_keys=plantilla["API_KEYS"],
+            admin_username=plantilla["ADMIN_USERNAME"],
+            admin_password_hash=plantilla["ADMIN_PASSWORD_HASH"],
+            auth_secret_key=plantilla["AUTH_SECRET_KEY"],
+        )
+    mensaje = str(error.value)
+    assert "N8N_WEBHOOK_SECRET necesita" in mensaje
+    assert "Cada clave de API_KEYS necesita" in mensaje
+    assert "AUTH_SECRET_KEY necesita" in mensaje
+    assert "ADMIN_PASSWORD_HASH no es un hash válido" in mensaje

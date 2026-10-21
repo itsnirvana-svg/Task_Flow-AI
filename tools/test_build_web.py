@@ -185,3 +185,108 @@ def test_todos_los_recursos_del_html_existen_con_su_capitalizacion_exacta():
     assert rutas
     for ruta in rutas:
         assert build_web.read_source(ruta)  # sale con error si hay una diferencia de mayúsculas
+
+
+# ---------------------------------------------------------------- modo conectado a la API
+
+
+API = "https://api.tu-empresa.com"
+
+
+def js_construido(sitio) -> str:
+    return next((sitio / "assets").glob("app.*.js")).read_text(encoding="utf-8")
+
+
+def test_los_scripts_nuevos_se_cargan_en_el_orden_correcto():
+    orden = re.findall(r'<script src="(js/[^"]+)"', contenido("index.html"))
+    assert orden[0] == "js/config.js"  # la configuración va la primera: api.js la lee al cargarse
+    for antes, despues in (
+        ("js/lib/format.js", "js/lib/api.js"),  # api.js usa el vocabulario de format.js
+        ("js/lib/api.js", "js/repository.js"),
+        ("js/repository.js", "js/store.js"),
+        ("js/components/login-view.js", "js/app.js"),
+        ("js/components/status-bar.js", "js/app.js"),
+    ):
+        assert orden.index(antes) < orden.index(despues), f"{antes} va antes que {despues}"
+
+
+def test_sin_variable_la_interfaz_se_construye_en_modo_demostracion(sitio, monkeypatch):
+    monkeypatch.delenv(build_web.API_URL_ENV, raising=False)
+    build_web.build()
+    assert '"https://' not in js_construido(sitio).split("apiUrl")[1][:30]
+    assert re.search(r'apiUrl:\s*""', js_construido(sitio))
+
+
+def test_la_url_de_la_api_se_fija_al_construir(sitio, monkeypatch):
+    # Solo una API local admite http.
+    monkeypatch.setenv(build_web.API_URL_ENV, "http://localhost:8000")
+    build_web.build()
+    assert 'apiUrl:"http://localhost:8000"' in js_construido(sitio).replace(" ", "")
+
+
+def test_el_marcador_de_config_js_se_sustituye_entero():
+    original = contenido("js/config.js")
+    fijada = build_web.apply_api_url(original, API)
+    assert f'apiUrl: "{API}"' in fijada
+    assert "/* TASKFLOW_API_URL */" not in fijada  # el marcador desaparece al fijar la dirección
+    assert build_web.apply_api_url(original, "") == original  # sin URL, nada cambia
+
+
+@pytest.mark.parametrize(
+    ("valor", "motivo"),
+    [
+        ("api.tu-empresa.com", "http"),  # sin esquema
+        ("ftp://api.tu-empresa.com", "http"),
+        ("https://api.tu-empresa.com/api", "solo el origen"),  # con ruta
+        ("https://usuario:clave@api.tu-empresa.com", "solo el origen"),  # con credenciales
+        ("http://api.tu-empresa.com", "https"),  # http fuera de local
+    ],
+)
+def test_una_url_de_api_no_valida_detiene_la_construccion(monkeypatch, valor, motivo):
+    monkeypatch.setenv(build_web.API_URL_ENV, valor)
+    with pytest.raises(SystemExit, match=motivo):
+        build_web.api_url_from_env()
+
+
+def test_la_barra_final_de_la_url_se_ignora(monkeypatch):
+    monkeypatch.setenv(build_web.API_URL_ENV, f"{API}/")
+    assert build_web.api_url_from_env() == API
+
+
+def test_si_la_csp_no_permite_la_api_la_construccion_falla_con_instrucciones(sitio, monkeypatch):
+    monkeypatch.setenv(build_web.API_URL_ENV, API)
+    with pytest.raises(SystemExit, match="connect-src"):
+        build_web.build()  # vercel.json solo permite 'self': el navegador bloquearía la API
+
+
+def test_con_la_api_permitida_en_la_csp_la_construccion_funciona(sitio, monkeypatch, tmp_path):
+    csp_vercel = json.loads(json.dumps(VERCEL))
+    for regla in csp_vercel["headers"]:
+        for cabecera in regla["headers"]:
+            if cabecera["key"] == "Content-Security-Policy":
+                cabecera["value"] = cabecera["value"].replace(
+                    "connect-src 'self'", f"connect-src 'self' {API}"
+                )
+    archivo = tmp_path / "vercel.json"
+    archivo.write_text(json.dumps(csp_vercel), encoding="utf-8")
+    monkeypatch.setattr(build_web, "VERCEL_JSON", archivo)
+    monkeypatch.setenv(build_web.API_URL_ENV, API)
+
+    build_web.build()
+
+    assert f'apiUrl:"{API}"' in js_construido(sitio).replace(" ", "")
+
+
+def test_el_codigo_de_la_interfaz_no_acepta_la_api_desde_la_direccion_de_la_pagina():
+    """Si la API se leyera de la URL, un enlace malicioso podría llevar a un servidor falso."""
+    for archivo in (RAIZ / "taskflow-web" / "js").rglob("*.js"):
+        texto = archivo.read_text(encoding="utf-8")
+        assert "location.search" not in texto and "URLSearchParams(window.location" not in texto, (
+            f"{archivo.name} lee parámetros de la dirección"
+        )
+
+
+def test_el_token_no_se_guarda_en_el_almacenamiento_permanente():
+    api = contenido("js/lib/api.js")
+    assert "localStorage" not in api  # la sesión usa sessionStorage: se borra al cerrar la pestaña
+    assert "sessionStorage" in api

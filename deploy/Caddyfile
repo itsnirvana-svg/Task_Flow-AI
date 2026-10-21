@@ -1,0 +1,41 @@
+# Caddy: HTTPS automático (Let's Encrypt) y proxy hacia la API y n8n.
+# DOMAIN y ACME_EMAIL llegan del .env a través de docker-compose.yml.
+# Necesita dos registros DNS de tipo A apuntando al servidor:  api.<DOMAIN>  y  n8n.<DOMAIN>
+
+{
+	email {$ACME_EMAIL}
+}
+
+(seguridad) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}
+
+api.{$DOMAIN} {
+	import seguridad
+	encode zstd gzip
+	reverse_proxy api:8000
+}
+
+n8n.{$DOMAIN} {
+	import seguridad
+	reverse_proxy n8n:5678
+
+	# ENDURECIMIENTO (recomendado): el editor de n8n no necesita estar abierto a todo internet.
+	# Solo los webhooks (/webhook/*) deben ser públicos. Para limitar el resto a tu dirección IP,
+	# sustituye el reverse_proxy de arriba por:
+	#
+	#   @editor not path /webhook/* /healthz
+	#   handle @editor {
+	#       @permitidas remote_ip 203.0.113.10
+	#       reverse_proxy @permitidas n8n:5678
+	#       respond "Acceso denegado" 403
+	#   }
+	#   handle {
+	#       reverse_proxy n8n:5678
+	#   }
+}

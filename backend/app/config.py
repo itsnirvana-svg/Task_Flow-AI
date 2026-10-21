@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -11,6 +12,10 @@ ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 POSTGRES_DRIVER = "postgresql+psycopg"
+# Claves de API, clave de firma y secreto del webhook: 32 caracteres o más en producción.
+MIN_SECRET_LENGTH = 32
+# Forma del hash que genera tools/hash_password.py: scrypt$N$r$p$sal$hash (sal y hash en base64).
+PASSWORD_HASH_FORMAT = re.compile(r"scrypt\$\d+\$\d+\$\d+\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+")
 
 
 def is_local(url: str) -> bool:
@@ -31,6 +36,24 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5-5"
+    # Tiempo máximo de espera a Claude por llamada (el SDK espera 10 minutos por defecto).
+    anthropic_timeout_seconds: float = 30.0
+    # Llamadas a la IA permitidas por minuto y por cliente: cada una consume crédito de pago.
+    ai_rate_limit_per_minute: int = 10
+
+    # Autenticación de la API. Dos tipos de credencial (ver app/security.py):
+    # - claves de API para servicios como n8n: API_KEYS="n8n:clave-larga,otro:clave-larga"
+    # - inicio de sesión para personas: ADMIN_USERNAME + ADMIN_PASSWORD_HASH
+    #   (el hash se genera con tools/hash_password.py)
+    # AUTH_DISABLED=true deja la API abierta y solo se admite en desarrollo.
+    auth_disabled: bool = False
+    api_keys: str = ""
+    admin_username: str = ""
+    admin_password_hash: str = ""
+    auth_secret_key: str = ""  # firma los tokens de sesión; en producción, mínimo 32 caracteres
+    auth_token_minutes: int = 60
+    login_max_attempts_per_minute: int = 5  # por dirección IP, para frenar la fuerza bruta
+
     # Solo desarrollo; en producción, los dominios reales (con https).
     cors_origins: str = "http://localhost:5500"
 
@@ -43,11 +66,34 @@ class Settings(BaseSettings):
     events_max_attempts: int = 8
     events_retry_base_seconds: float = 5.0
     events_retry_max_seconds: float = 900.0
+    # Cuánto reserva un despachador un evento mientras lo envía (debe superar el tiempo máximo de
+    # envío, 5 s). Si el proceso muere a mitad de un envío, otro lo retoma al vencer la reserva.
+    events_lease_seconds: float = 30.0
     events_retention_days: int = 7  # los enviados se conservan este tiempo como evidencia
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def api_key_map(self) -> dict[str, str]:
+        """`API_KEYS` ("n8n:clave,otro:clave") como {nombre: clave}."""
+        pares = (par.split(":", 1) for par in self.api_keys.split(",") if par.strip())
+        return {nombre.strip(): clave.strip() for nombre, clave in pares}
+
+    @property
+    def login_configured(self) -> bool:
+        """¿Está configurado el inicio de sesión de personas?"""
+        return bool(self.admin_username and self.admin_password_hash and self.auth_secret_key)
+
+    @field_validator("api_keys")
+    @classmethod
+    def check_api_keys_format(cls, valor: str) -> str:
+        for par in (p for p in valor.split(",") if p.strip()):
+            nombre, separador, clave = par.partition(":")
+            if not (separador and nombre.strip() and clave.strip()):
+                raise ValueError('API_KEYS debe tener el formato "nombre:clave,otro:clave"')
+        return valor
 
     @field_validator("database_url")
     @classmethod
@@ -59,12 +105,20 @@ class Settings(BaseSettings):
         return url
 
     @model_validator(mode="after")
+    def require_secret_for_login(self) -> "Settings":
+        """Sin clave de firma no se pueden emitir tokens: se avisa al arrancar, no en el login."""
+        if self.admin_password_hash and not (self.admin_username and self.auth_secret_key):
+            raise ValueError("ADMIN_PASSWORD_HASH requiere ADMIN_USERNAME y AUTH_SECRET_KEY")
+        return self
+
+    @model_validator(mode="after")
     def require_definitive_configuration(self) -> "Settings":
         """En producción, ninguna conexión puede apuntar a un entorno de desarrollo o prueba."""
         if self.app_env != "production":
             return self
 
         problems = []
+        problems += self._authentication_problems()
         if self.database_url.startswith("sqlite"):
             problems.append("DATABASE_URL apunta a SQLite: en producción debe ser PostgreSQL")
 
@@ -83,10 +137,28 @@ class Settings(BaseSettings):
                 problems.append("N8N_WEBHOOK_URL usa /webhook-test/ (atiende una sola petición)")
             if not self.n8n_webhook_secret:
                 problems.append("N8N_WEBHOOK_SECRET es obligatorio si hay N8N_WEBHOOK_URL")
+            elif len(self.n8n_webhook_secret) < MIN_SECRET_LENGTH:
+                problems.append(f"N8N_WEBHOOK_SECRET necesita {MIN_SECRET_LENGTH}+ caracteres")
 
         if problems:
             raise ValueError("Configuración no válida para producción:\n- " + "\n- ".join(problems))
         return self
+
+    def _authentication_problems(self) -> list[str]:
+        """Qué le falta a la autenticación para poder usarse en producción."""
+        problems = []
+        if self.auth_disabled:
+            problems.append("AUTH_DISABLED=true deja la API abierta: solo se admite en desarrollo")
+        if not self.api_key_map and not self.admin_password_hash:
+            problems.append("Sin credenciales: define API_KEYS o ADMIN_USERNAME y su hash")
+        if any(len(clave) < MIN_SECRET_LENGTH for clave in self.api_key_map.values()):
+            problems.append(f"Cada clave de API_KEYS necesita {MIN_SECRET_LENGTH}+ caracteres")
+        if self.admin_password_hash and len(self.auth_secret_key) < MIN_SECRET_LENGTH:
+            problems.append(f"AUTH_SECRET_KEY necesita {MIN_SECRET_LENGTH}+ caracteres")
+        hash_guardado = self.admin_password_hash
+        if hash_guardado and not PASSWORD_HASH_FORMAT.fullmatch(hash_guardado):
+            problems.append("ADMIN_PASSWORD_HASH no es un hash válido: usa tools/hash_password.py")
+        return problems
 
 
 settings = Settings()

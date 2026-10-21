@@ -1,0 +1,11 @@
+# Finales de línea: estos archivos DEBEN usar LF aunque se clonen en Windows. Un script de shell o un
+# Dockerfile con CRLF falla en Linux y dentro de los contenedores ("bad interpreter: bash\r").
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+Caddyfile   text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.sql       text eol=lf
+
+# El resto lo decide Git
+* text=auto

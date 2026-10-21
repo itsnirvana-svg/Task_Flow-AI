@@ -31,3 +31,6 @@ taskflow.db
 .claude/reports/
 
 taskflow-web/dist/
+
+# Copias de seguridad de la base de datos (deploy/backup.sh)
+backups/

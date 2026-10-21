@@ -1,0 +1,155 @@
+# TaskFlow AI en producción: API + PostgreSQL + n8n detrás de Caddy (HTTPS automático).
+#
+#   cp .env.example .env     (y rellénalo; ver README.md)
+#   docker compose up -d --build
+#
+# Los secretos NO están aquí: salen de .env (que no se sube a Git). Las variables con :? hacen que
+# `docker compose` se niegue a arrancar si falta alguna, en lugar de arrancar a medias.
+
+name: taskflow
+
+x-registro: &registro
+  # Sin límite, los registros pueden llenar el disco del servidor.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  # ---------------------------------------------------------------- entrada: HTTPS
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"      # Let's Encrypt (validación) y redirección a https
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?define DOMAIN (por ejemplo tu-empresa.com)}
+      ACME_EMAIL: ${ACME_EMAIL:?define ACME_EMAIL (aviso de caducidad de certificados)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # certificados: si se pierde, hay que pedirlos de nuevo
+      - caddy_config:/config
+    networks:
+      edge:
+        # La API llama al webhook de n8n por su dirección pública (https://n8n.<dominio>); con estos
+        # alias esa llamada llega a Caddy por la red interna, sin salir a internet.
+        aliases:
+          - n8n.${DOMAIN}
+          - api.${DOMAIN}
+    depends_on:
+      api:
+        condition: service_healthy
+      n8n:
+        condition: service_healthy
+    logging: *registro
+    security_opt: ["no-new-privileges:true"]
+
+  # ---------------------------------------------------------------- API de TaskFlow
+  api:
+    build:
+      context: ../backend
+    image: taskflow-api:local
+    restart: unless-stopped
+    environment:
+      APP_ENV: production   # en producción la API NO ARRANCA con una configuración de pruebas
+      DATABASE_URL: postgresql://taskflow:${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD}@postgres:5432/taskflow
+      CORS_ORIGINS: ${CORS_ORIGINS:?define CORS_ORIGINS (la dirección https de la interfaz)}
+      N8N_WEBHOOK_URL: https://n8n.${DOMAIN}/webhook/taskflow
+      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET:?define N8N_WEBHOOK_SECRET}
+      API_KEYS: ${API_KEYS:?define API_KEYS (n8n:<clave>)}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?define ADMIN_USERNAME}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:?define ADMIN_PASSWORD_HASH}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?define AUTH_SECRET_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    healthcheck:
+      # /health/ready comprueba también la base de datos.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [edge, internal]
+    logging: *registro
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  # ---------------------------------------------------------------- base de datos
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: taskflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD}
+      POSTGRES_DB: taskflow
+      N8N_DB_PASSWORD: ${N8N_DB_PASSWORD:?define N8N_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Se ejecutan UNA sola vez, al crear el volumen por primera vez (orden alfabético):
+      - ./postgres/init/01-n8n.sh:/docker-entrypoint-initdb.d/01-n8n.sh:ro
+      - ../backend/db/schema.sql:/docker-entrypoint-initdb.d/02-taskflow-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskflow -d taskflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]   # sin puertos publicados: la base de datos no es accesible desde internet
+    logging: *registro
+    security_opt: ["no-new-privileges:true"]
+
+  # ---------------------------------------------------------------- automatizaciones
+  n8n:
+    image: n8nio/n8n:2.42.7
+    restart: unless-stopped
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD:?define N8N_DB_PASSWORD}
+      # Cifra las credenciales guardadas en n8n. SI SE PIERDE, no se pueden descifrar: guárdala
+      # también fuera del servidor (gestor de contraseñas).
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?define N8N_ENCRYPTION_KEY}
+      N8N_HOST: n8n.${DOMAIN}
+      N8N_PROTOCOL: https
+      N8N_PORT: "5678"
+      WEBHOOK_URL: https://n8n.${DOMAIN}/
+      N8N_PROXY_HOPS: "1"          # va detrás de Caddy
+      GENERIC_TIMEZONE: ${TZ:-UTC}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [edge, internal]
+    logging: *registro
+    security_opt: ["no-new-privileges:true"]
+
+networks:
+  edge: {}      # lo que Caddy puede alcanzar (y la salida a internet de la API y de n8n)
+  internal:
+    internal: true   # solo para la base de datos: sin salida a internet
+
+volumes:
+  pgdata:
+  n8n_data:
+  caddy_data:
+  caddy_config:

@@ -34,8 +34,10 @@ CREATE TABLE projects (
 
 CREATE TABLE tasks (
     id             INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    project_id     INTEGER      NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
-    created_by     INTEGER      NOT NULL REFERENCES users (id),
+    -- Transitorio: la aplicación aún no tiene proyectos ni usuarios, así que no los rellena
+    -- (ver TaskModel). Cuando existan, se rellenarán los datos antiguos y se volverán NOT NULL.
+    project_id     INTEGER      REFERENCES projects (id) ON DELETE CASCADE,
+    created_by     INTEGER      REFERENCES users (id),
     assigned_to    INTEGER      REFERENCES users (id) ON DELETE SET NULL,
     parent_task_id INTEGER      REFERENCES tasks (id) ON DELETE CASCADE,
     title          VARCHAR(200) NOT NULL,
@@ -45,6 +47,8 @@ CREATE TABLE tasks (
     priority       SMALLINT     NOT NULL DEFAULT 2
                    CHECK (priority BETWEEN 1 AND 4),
     due_date       DATE,
+    -- nombre del proyecto, en texto libre (transitorio hasta usar project_id)
+    project        VARCHAR(60),
     completed_at   TIMESTAMPTZ,
     -- id del evento en el calendario externo (Google Calendar)
     external_event_id VARCHAR(255),
@@ -113,6 +117,7 @@ CREATE TABLE event_outbox (
                     CHECK (status IN ('pending', 'sent', 'dead')),
     attempts        INTEGER      NOT NULL DEFAULT 0,
     next_attempt_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    locked_until    TIMESTAMPTZ,                    -- reserva del despachador que lo está enviando
     last_error      TEXT,
     sent_at         TIMESTAMPTZ
 );

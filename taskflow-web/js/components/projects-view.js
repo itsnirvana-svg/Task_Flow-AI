@@ -53,7 +53,7 @@
     function update() {
       const projects = store.projects();
       grid.replaceChildren(...projects.map(card));
-      empty.hidden = projects.length > 0;
+      empty.hidden = projects.length > 0 || store.state.loading;
     }
 
     return { update };

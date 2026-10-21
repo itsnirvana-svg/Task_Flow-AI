@@ -7,6 +7,16 @@ from app import main as main_module
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
+from app.routers import ai as ai_router
+from app.routers import auth as auth_router
+from helpers import CLAVE_DE_PRUEBAS
+
+
+@pytest.fixture(autouse=True)
+def limitadores_limpios():
+    """Los limitadores viven en memoria: cada prueba empieza sin llamadas contadas."""
+    ai_router.ai_limiter.reset()
+    auth_router.login_limiter.reset()
 
 
 @pytest.fixture()
@@ -51,10 +61,19 @@ def client(engine, session_factory, monkeypatch):
 
     monkeypatch.setattr(settings, "n8n_webhook_url", "")
     monkeypatch.setattr(settings, "events_poll_seconds", 0.05)
+    # La autenticación está activa y este cliente lleva una clave de API válida.
+    monkeypatch.setattr(settings, "auth_disabled", False)
+    monkeypatch.setattr(settings, "api_keys", f"pruebas:{CLAVE_DE_PRUEBAS}")
     # El arranque y el despachador usan la base de pruebas, no la real.
     monkeypatch.setattr(main_module, "engine", engine)
     monkeypatch.setattr(main_module, "SessionLocal", session_factory)
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
+    with TestClient(app, headers={"X-API-Key": CLAVE_DE_PRUEBAS}) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def anonimo(client):
+    """Cliente SIN credenciales, sobre la misma aplicación y la misma base de pruebas."""
+    return TestClient(app)

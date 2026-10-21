@@ -287,6 +287,84 @@ def test_no_envia_nada_si_no_hay_webhook_configurado(db, session_factory, monkey
     assert filas(session_factory)[0].status == OutboxStatus.PENDING.value
 
 
+# ---------------------------------------------------------------- varios despachadores
+
+
+def test_varios_despachadores_no_envian_el_mismo_evento_dos_veces(
+    db, session_factory, reintentos_rapidos, monkeypatch
+):
+    """Varios procesos de la API (workers o réplicas) comparten la misma cola de eventos."""
+    total = 40
+    for i in range(total):
+        task_service.create_task(db, TaskCreate(title=f"T{i}"))
+    recibidos = []
+
+    def envio_lento(carga):
+        time.sleep(0.005)  # latencia de red: da tiempo a que otro despachador intente lo mismo
+        recibidos.append(carga["sequence"])
+
+    monkeypatch.setattr(events, "send", envio_lento)
+    despachadores = [events.Dispatcher(session_factory, poll_seconds=0.01) for _ in range(3)]
+    for d in despachadores:
+        d.start()
+    try:
+        assert despachadores[0].drain(timeout=15), "quedaron eventos sin enviar"
+        time.sleep(0.2)  # por si algún despachador estuviera a medio envío
+    finally:
+        for d in despachadores:
+            d.stop()
+
+    assert len(recibidos) == total and len(set(recibidos)) == total  # ninguno repetido
+    assert recibidos == sorted(recibidos)  # y en orden
+
+
+def test_un_evento_reservado_por_otro_despachador_no_se_envia(db, session_factory, n8n):
+    task_service.create_task(db, TaskCreate(title="x"))
+    with session_factory() as s:
+        [fila] = s.scalars(select(OutboxEventModel))
+        fila.locked_until = datetime.now(timezone.utc) + timedelta(seconds=60)
+        s.commit()
+
+    despachador = events.Dispatcher(session_factory)
+
+    assert despachador.dispatch_next() is False
+    assert n8n == []
+    assert filas(session_factory)[0].status == OutboxStatus.PENDING.value
+
+
+def test_una_reserva_vencida_permite_a_otro_despachador_retomar_el_evento(
+    db, session_factory, n8n
+):
+    """Si un proceso muere a mitad de un envío, su reserva caduca y otro entrega el evento."""
+    task_service.create_task(db, TaskCreate(title="x"))
+    with session_factory() as s:
+        [fila] = s.scalars(select(OutboxEventModel))
+        fila.locked_until = datetime.now(timezone.utc) - timedelta(seconds=1)
+        s.commit()
+
+    assert events.Dispatcher(session_factory).dispatch_next() is True
+
+    [fila] = filas(session_factory)
+    assert len(n8n) == 1
+    assert fila.status == OutboxStatus.SENT.value and fila.locked_until is None
+
+
+def test_el_fallo_libera_la_reserva_para_el_siguiente_intento(
+    db, session_factory, reintentos_rapidos, monkeypatch
+):
+    def caido(carga):
+        raise ConnectionError("n8n caído")
+
+    monkeypatch.setattr(events, "send", caido)
+    task_service.create_task(db, TaskCreate(title="x"))
+
+    assert events.Dispatcher(session_factory).dispatch_next() is True
+
+    [fila] = filas(session_factory)
+    assert fila.status == OutboxStatus.PENDING.value and fila.attempts == 1
+    assert fila.locked_until is None  # sin reserva: se podrá reintentar al llegar su turno
+
+
 # ---------------------------------------------------------------- limpieza y envío HTTP
 
 

@@ -8,6 +8,9 @@ Cómo funciona:
    creciente (5 s, 10 s, 20 s…) hasta un máximo de intentos; luego queda como `dead`.
 4. Si la API se reinicia, los pendientes se envían al volver a arrancar: no se pierde nada.
 
+Varios procesos de la API pueden convivir: cada despachador reserva el evento en la base de datos
+antes de enviarlo (`Dispatcher._claim`), así que solo uno lo envía.
+
 Garantías: entrega **al menos una vez** (puede haber duplicados tras un fallo) y en el orden
 de publicación. n8n debe descartar `event_id` ya procesados y consultar el estado actual de la
 tarea en lugar de fiarse solo del contenido del evento.
@@ -20,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import httpx
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config import settings
@@ -135,9 +138,35 @@ class Dispatcher:
             time.sleep(0.02)
         return True
 
+    @staticmethod
+    def _claim(db: Session, row_id: int) -> bool:
+        """Reserva el evento para este despachador con una actualización atómica.
+
+        La base de datos deja pasar a UN solo despachador: la condición exige que el evento siga
+        pendiente, que ya le toque y que nadie lo tenga reservado. Así, varios procesos de la API
+        (varios workers o réplicas) no envían el mismo evento dos veces, y como cada uno solo
+        reserva el primer pendiente, el orden se conserva. La reserva caduca por si el proceso
+        muere a mitad del envío.
+        """
+        now = _now()
+        result = db.execute(
+            update(OutboxEventModel)
+            .where(
+                OutboxEventModel.id == row_id,
+                OutboxEventModel.status == OutboxStatus.PENDING.value,
+                OutboxEventModel.next_attempt_at <= now,
+                or_(OutboxEventModel.locked_until.is_(None), OutboxEventModel.locked_until <= now),
+            )
+            .values(locked_until=now + timedelta(seconds=settings.events_lease_seconds))
+            .execution_options(synchronize_session=False)
+        )
+        db.commit()
+        return result.rowcount == 1
+
     def dispatch_next(self) -> bool:
         """Intenta enviar el primer pendiente. True si hizo un intento; False si no había nada
-        listo (sin pendientes, o el primero aún espera su turno de reintento)."""
+        listo (sin pendientes, el primero aún espera su turno de reintento o lo tiene reservado
+        otro despachador)."""
         with self._session_factory() as db:
             row = db.scalars(
                 select(OutboxEventModel)
@@ -147,6 +176,9 @@ class Dispatcher:
             ).first()
             if row is None or row.next_attempt_at > _now():
                 return False
+            if not self._claim(db, row.id):
+                return False
+            db.refresh(row)  # el estado confirmado, por si otro lo cambió mientras tanto
 
             try:
                 send(build_payload(row))
@@ -165,6 +197,7 @@ class Dispatcher:
                 row.status = OutboxStatus.SENT.value
                 row.sent_at = _now()
                 row.last_error = None
+            row.locked_until = None  # libera la reserva en cualquier resultado
             db.commit()
             return True
 
